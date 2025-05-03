@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Usuarios</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <div id="auth-forms" class="auth-container">
+            <div class="tabs">
+                <button id="login-tab" class="tab active">Iniciar Sesión</button>
+                <button id="register-tab" class="tab">Registrarse</button>
+            </div>
+            
+            <!-- Formulario de Login -->
+            <form id="login-form" class="form">
+                <h2>Iniciar Sesión</h2>
+                <div class="form-group">
+                    <label for="login-email">Email</label>
+                    <input type="email" id="login-email" required>
+                </div>
+                <div class="form-group">
+                    <label for="login-password">Contraseña</label>
+                    <input type="password" id="login-password" required>
+                </div>
+                <button type="submit" class="btn">Ingresar</button>
+                <div id="login-message" class="message"></div>
+            </form>
+            
+            <!-- Formulario de Registro -->
+            <form id="register-form" class="form hidden">
+                <h2>Crear Cuenta</h2>
+                <div class="form-group">
+                    <label for="register-nombre">Nombre</label>
+                    <input type="text" id="register-nombre" required>
+                </div>
+                <div class="form-group">
+                    <label for="register-apellido">Apellido</label>
+                    <input type="text" id="register-apellido" required>
+                </div>
+                <div class="form-group">
+                    <label for="register-email">Email</label>
+                    <input type="email" id="register-email" required>
+                </div>
+                <div class="form-group">
+                    <label for="register-password">Contraseña</label>
+                    <input type="password" id="register-password" required>
+                </div>
+                <button type="submit" class="btn">Registrarse</button>
+                <div id="register-message" class="message"></div>
+            </form>
+        </div>
+        
+        <!-- Panel de Usuarios (visible después de iniciar sesión) -->
+        <div id="user-dashboard" class="dashboard hidden">
+            <div class="header">
+                <h1>Panel de Usuarios</h1>
+                <button id="logout-btn" class="btn btn-secondary">Cerrar Sesión</button>
+            </div>
+            
+            <div class="welcome-message">
+                <h2>Bienvenido, <span id="user-name"></span>!</h2>
+            </div>
+            
+            <div class="user-list-container">
+                <h3>Lista de Usuarios Registrados</h3>
+                <table id="users-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nombre</th>
+                            <th>Apellido</th>
+                            <th>Email</th>
+                            <th>Fecha de Registro</th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-list">
+                        <!-- Los usuarios se cargarán aquí dinámicamente -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
