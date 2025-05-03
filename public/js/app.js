@@ -1,5 +1,5 @@
 // Configuración de la API
-const API_URL = 'http://localhost:3000/api';
+const API_URL = 'http://34.207.87.35/:3000/api';
 
 // Referencias a elementos del DOM
 const loginTab = document.getElementById('login-tab');
