@@ -1,5 +1,5 @@
 // Configuración de la API
-const API_URL = 'http://seguridadenredes.ddns.net:3000/api';
+const API_URL = 'http://seguridadenredes.ddns.net:3000/api'; // Corregido el formato del URL
 
 // Referencias a elementos del DOM
 const loginTab = document.getElementById('login-tab');
@@ -13,6 +13,14 @@ const userNameSpan = document.getElementById('user-name');
 const usersList = document.getElementById('users-list');
 const loginMessage = document.getElementById('login-message');
 const registerMessage = document.getElementById('register-message');
+const dashboardMessage = document.getElementById('dashboard-message') || document.createElement('div'); // Elemento para mensajes en el dashboard
+
+// Si no existe el elemento de mensaje en el dashboard, crearlo
+if (!document.getElementById('dashboard-message')) {
+    dashboardMessage.id = 'dashboard-message';
+    dashboardMessage.className = 'message';
+    userDashboard.insertBefore(dashboardMessage, userDashboard.firstChild);
+}
 
 // Cambiar entre pestañas de login y registro
 loginTab.addEventListener('click', () => {
@@ -34,6 +42,14 @@ function showMessage(element, message, isError = false) {
     element.textContent = message;
     element.classList.remove('error', 'success');
     element.classList.add(isError ? 'error' : 'success');
+    
+    // Hacer visible el mensaje
+    element.style.display = 'block';
+    
+    // Ocultar el mensaje después de 5 segundos
+    setTimeout(() => {
+        element.style.display = 'none';
+    }, 5000);
 }
 
 // Función para manejar el registro de usuarios
@@ -101,11 +117,12 @@ loginForm.addEventListener('submit', async (e) => {
             body: JSON.stringify({ email, password })
         });
         
-        const data = await response.json();
-        
         if (!response.ok) {
+            const data = await response.json();
             throw new Error(data.message || 'Error en el inicio de sesión');
         }
+        
+        const data = await response.json();
         
         // Guardar token en localStorage
         localStorage.setItem('token', data.token);
@@ -115,7 +132,7 @@ loginForm.addEventListener('submit', async (e) => {
         showDashboard();
         
     } catch (error) {
-        showMessage(loginMessage, error.message, true);
+        showMessage(loginMessage, error.message || 'Error al conectar con el servidor', true);
     }
 });
 
@@ -148,42 +165,75 @@ async function loadUsers() {
             throw new Error('No hay token disponible');
         }
         
+        // Mostrar mensaje de carga
+        showMessage(dashboardMessage, 'Cargando usuarios...', false);
+        
+        console.log('Cargando usuarios con token:', token);
+        console.log('URL de la API:', `${API_URL}/users`);
+        
         const response = await fetch(`${API_URL}/users`, {
+            method: 'GET', // Especificar método explícitamente
             headers: {
-                'Authorization': `Bearer ${token}`
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
             }
         });
         
+        console.log('Respuesta recibida:', response.status);
+        
         if (!response.ok) {
-            throw new Error('Error al cargar usuarios');
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.message || `Error al cargar usuarios: ${response.status}`);
         }
         
         const users = await response.json();
+        console.log('Usuarios recibidos:', users);
+        
+        if (!Array.isArray(users)) {
+            throw new Error('La respuesta no contiene un array de usuarios');
+        }
         
         // Limpiar lista actual
         usersList.innerHTML = '';
         
         // Mostrar usuarios en la tabla
-        users.forEach(user => {
-            const row = document.createElement('tr');
-            
-            // Formatear fecha
-            const fecha = new Date(user.fecha_registro);
-            const fechaFormateada = `${fecha.getDate()}/${fecha.getMonth() + 1}/${fecha.getFullYear()} ${fecha.getHours()}:${fecha.getMinutes()}`;
-            
-            row.innerHTML = `
-                <td>${user.id}</td>
-                <td>${user.nombre}</td>
-                <td>${user.apellido}</td>
-                <td>${user.email}</td>
-                <td>${fechaFormateada}</td>
-            `;
-            
-            usersList.appendChild(row);
-        });
+        if (users.length === 0) {
+            const emptyRow = document.createElement('tr');
+            emptyRow.innerHTML = '<td colspan="5" class="text-center">No hay usuarios registrados</td>';
+            usersList.appendChild(emptyRow);
+        } else {
+            users.forEach(user => {
+                const row = document.createElement('tr');
+                
+                // Formatear fecha
+                let fechaFormateada = 'N/A';
+                if (user.fecha_registro) {
+                    try {
+                        const fecha = new Date(user.fecha_registro);
+                        fechaFormateada = `${fecha.getDate().toString().padStart(2, '0')}/${(fecha.getMonth() + 1).toString().padStart(2, '0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2, '0')}:${fecha.getMinutes().toString().padStart(2, '0')}`;
+                    } catch (e) {
+                        console.error('Error al formatear fecha:', e);
+                    }
+                }
+                
+                row.innerHTML = `
+                    <td>${user.id || 'N/A'}</td>
+                    <td>${user.nombre || 'N/A'}</td>
+                    <td>${user.apellido || 'N/A'}</td>
+                    <td>${user.email || 'N/A'}</td>
+                    <td>${fechaFormateada}</td>
+                `;
+                
+                usersList.appendChild(row);
+            });
+        }
+        
+        showMessage(dashboardMessage, 'Usuarios cargados correctamente', false);
         
     } catch (error) {
         console.error('Error al cargar usuarios:', error);
+        showMessage(dashboardMessage, `Error: ${error.message}`, true);
     }
 }
 
@@ -200,6 +250,9 @@ logoutBtn.addEventListener('click', () => {
     // Limpiar formularios
     loginForm.reset();
     registerForm.reset();
+    
+    // Resetear pestañas
+    loginTab.click();
 });
 
 // Verificar si el usuario ya tiene sesión iniciada al cargar la página
@@ -208,6 +261,36 @@ document.addEventListener('DOMContentLoaded', () => {
     const user = localStorage.getItem('user');
     
     if (token && user) {
-        showDashboard();
+        // Verificar si el token es válido antes de mostrar el dashboard
+        verifyToken(token)
+            .then(isValid => {
+                if (isValid) {
+                    showDashboard();
+                } else {
+                    // Si el token no es válido, cerrar sesión
+                    logoutBtn.click();
+                }
+            })
+            .catch(() => {
+                // En caso de error, cerrar sesión
+                logoutBtn.click();
+            });
     }
 });
+
+// Función para verificar si el token es válido
+async function verifyToken(token) {
+    try {
+        const response = await fetch(`${API_URL}/verify-token`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        return response.ok;
+    } catch (error) {
+        console.error('Error al verificar token:', error);
+        return false;
+    }
+}
