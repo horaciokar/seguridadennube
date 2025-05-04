@@ -1,5 +1,5 @@
 // Configuración de la API
-const API_URL = 'http://seguridadenredes.ddns.net:3000/api'; // Corregido el formato del URL
+const API_URL = 'https://seguridadenredes.ddns.net:3000/api'; // Cambiado a HTTPS para evitar errores de contenido mixto
 
 // Referencias a elementos del DOM
 const loginTab = document.getElementById('login-tab');
