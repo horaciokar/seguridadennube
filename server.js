@@ -4,13 +4,19 @@ const bcrypt = require('bcrypt');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const jwt = require('jsonwebtoken');
+const https = require('https');
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
 
 const app = express();
 const port = process.env.PORT || 3000;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: 'https://seguridadenredes.ddns.net', // Dominio principal de tu aplicación
+  credentials: true
+}));
 app.use(bodyParser.json());
 app.use(express.static('public'));
 
@@ -47,6 +53,11 @@ const verifyToken = (req, res, next) => {
     return res.status(401).json({ message: 'Token inválido o expirado' });
   }
 };
+
+// Ruta para verificar si un token es válido
+app.get('/api/verify-token', verifyToken, (req, res) => {
+  res.status(200).json({ valid: true, user: req.user });
+});
 
 // Ruta para registrar un nuevo usuario
 app.post('/api/register', async (req, res) => {
@@ -150,7 +161,32 @@ app.get('/api/users', verifyToken, (req, res) => {
   });
 });
 
-// Iniciar el servidor
-app.listen(port, () => {
-  console.log(`Servidor corriendo en http://localhost:${port}`);
-});
+// Configuración HTTPS
+try {
+  const httpsOptions = {
+    key: fs.readFileSync(process.env.SSL_KEY_PATH || '/etc/letsencrypt/live/seguridadenredes.ddns.net/privkey.pem'),
+    cert: fs.readFileSync(process.env.SSL_CERT_PATH || '/etc/letsencrypt/live/seguridadenredes.ddns.net/fullchain.pem')
+  };
+
+  // Crear servidor HTTPS
+  https.createServer(httpsOptions, app).listen(port, () => {
+    console.log(`Servidor HTTPS corriendo en https://localhost:${port}`);
+  });
+
+  // Opcional: Redirigir HTTP a HTTPS
+  if (process.env.REDIRECT_HTTP === 'true') {
+    const httpApp = express();
+    httpApp.all('*', (req, res) => {
+      return res.redirect(`https://${req.hostname}:${port}${req.path}`);
+    });
+    httpApp.listen(80, () => console.log('Servidor HTTP redirigiendo a HTTPS'));
+  }
+} catch (error) {
+  console.error('Error al iniciar el servidor HTTPS:', error);
+  console.log('Iniciando servidor sin HTTPS como fallback...');
+  
+  // Iniciar el servidor HTTP como fallback
+  app.listen(port, () => {
+    console.log(`Servidor fallback HTTP corriendo en http://localhost:${port}`);
+  });
+}
