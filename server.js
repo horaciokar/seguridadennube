@@ -161,6 +161,49 @@ app.get('/api/users', verifyToken, (req, res) => {
   });
 });
 
+// NUEVA RUTA: Eliminar usuario por ID
+app.delete('/api/users/:id', verifyToken, (req, res) => {
+  const userId = req.params.id;
+  
+  // Verificar que el ID sea válido
+  if (!userId || isNaN(userId)) {
+    return res.status(400).json({ message: 'ID de usuario inválido' });
+  }
+  
+  console.log(`Intento de eliminar usuario con ID: ${userId}`);
+  
+  // No permitir que un usuario se elimine a sí mismo
+  if (parseInt(userId) === req.user.id) {
+    return res.status(403).json({ message: 'No puedes eliminar tu propio usuario' });
+  }
+  
+  // Verificar si el usuario existe antes de eliminarlo
+  db.query('SELECT * FROM users WHERE id = ?', [userId], (err, results) => {
+    if (err) {
+      console.error('Error al buscar usuario:', err);
+      return res.status(500).json({ message: 'Error del servidor' });
+    }
+    
+    if (results.length === 0) {
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+    
+    // Eliminar el usuario
+    db.query('DELETE FROM users WHERE id = ?', [userId], (err, result) => {
+      if (err) {
+        console.error('Error al eliminar usuario:', err);
+        return res.status(500).json({ message: 'Error al eliminar el usuario' });
+      }
+      
+      console.log(`Usuario con ID ${userId} eliminado correctamente`);
+      return res.status(200).json({ 
+        message: 'Usuario eliminado correctamente',
+        userId: userId
+      });
+    });
+  });
+});
+
 // Configuración HTTPS
 try {
   const httpsOptions = {

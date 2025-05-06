@@ -52,6 +52,47 @@ function showMessage(element, message, isError = false) {
     }, 5000);
 }
 
+// Función para eliminar un usuario
+async function deleteUser(userId) {
+    try {
+        const token = localStorage.getItem('token');
+        
+        if (!token) {
+            throw new Error('No hay token disponible');
+        }
+        
+        // Confirmar antes de eliminar
+        if (!confirm('¿Estás seguro de que deseas eliminar este usuario?')) {
+            return;
+        }
+        
+        showMessage(dashboardMessage, 'Eliminando usuario...', false);
+        
+        const response = await fetch(`${API_URL}/users/${userId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || `Error al eliminar usuario: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        showMessage(dashboardMessage, 'Usuario eliminado correctamente', false);
+        
+        // Recargar la lista de usuarios
+        loadUsers();
+        
+    } catch (error) {
+        console.error('Error al eliminar usuario:', error);
+        showMessage(dashboardMessage, `Error: ${error.message}`, true);
+    }
+}
+
 // Función para manejar el registro de usuarios
 registerForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -200,9 +241,12 @@ async function loadUsers() {
         // Mostrar usuarios en la tabla
         if (users.length === 0) {
             const emptyRow = document.createElement('tr');
-            emptyRow.innerHTML = '<td colspan="5" class="text-center">No hay usuarios registrados</td>';
+            emptyRow.innerHTML = '<td colspan="6" class="text-center">No hay usuarios registrados</td>';
             usersList.appendChild(emptyRow);
         } else {
+            // Obtener el usuario actual
+            const currentUser = JSON.parse(localStorage.getItem('user'));
+            
             users.forEach(user => {
                 const row = document.createElement('tr');
                 
@@ -217,15 +261,30 @@ async function loadUsers() {
                     }
                 }
                 
+                // Columnas básicas
                 row.innerHTML = `
                     <td>${user.id || 'N/A'}</td>
                     <td>${user.nombre || 'N/A'}</td>
                     <td>${user.apellido || 'N/A'}</td>
                     <td>${user.email || 'N/A'}</td>
                     <td>${fechaFormateada}</td>
+                    <td class="action-column">
+                        ${currentUser.id !== user.id ? 
+                            `<button class="btn-delete" data-id="${user.id}">Eliminar</button>` : 
+                            '<span class="current-user-badge">Tú</span>'}
+                    </td>
                 `;
                 
                 usersList.appendChild(row);
+                
+                // Añadir event listener al botón de eliminar si existe
+                const deleteButton = row.querySelector('.btn-delete');
+                if (deleteButton) {
+                    deleteButton.addEventListener('click', function() {
+                        const userId = this.getAttribute('data-id');
+                        deleteUser(userId);
+                    });
+                }
             });
         }
         

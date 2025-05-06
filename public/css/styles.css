@@ -6,7 +6,7 @@
 }
 
 body {
-    background-color: #f5f5f5;
+    background-color: #f0f4f8; /* Fondo celeste claro */
     color: #333;
     line-height: 1.6;
 }
@@ -27,6 +27,7 @@ body {
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
     width: 400px;
     overflow: hidden;
+    border: 2px solid #75aadb; /* Borde celeste */
 }
 
 .tabs {
@@ -45,7 +46,7 @@ body {
 }
 
 .tab.active {
-    background-color: #4CAF50;
+    background-color: #75aadb; /* Celeste */
     color: white;
 }
 
@@ -56,7 +57,7 @@ body {
 .form h2 {
     margin-bottom: 20px;
     text-align: center;
-    color: #4CAF50;
+    color: #75aadb; /* Celeste */
 }
 
 .form-group {
@@ -67,6 +68,7 @@ body {
     display: block;
     margin-bottom: 5px;
     font-weight: bold;
+    color: #2a5caa; /* Azul más oscuro */
 }
 
 .form-group input {
@@ -81,7 +83,7 @@ body {
     display: block;
     width: 100%;
     padding: 12px;
-    background-color: #4CAF50;
+    background-color: #75aadb; /* Celeste */
     color: white;
     border: none;
     border-radius: 4px;
@@ -91,11 +93,11 @@ body {
 }
 
 .btn:hover {
-    background-color: #45a049;
+    background-color: #5d90c0; /* Celeste más oscuro */
 }
 
 .btn-secondary {
-    background-color: #f44336;
+    background-color: #f44336; /* Mantener rojo para cerrar sesión */
 }
 
 .btn-secondary:hover {
@@ -107,6 +109,7 @@ body {
     padding: 10px;
     border-radius: 4px;
     font-size: 14px;
+    display: none; /* Inicialmente oculto */
 }
 
 .message.error {
@@ -132,6 +135,7 @@ body {
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
     width: 100%;
     padding: 20px;
+    border: 2px solid #75aadb; /* Borde celeste */
 }
 
 .header {
@@ -140,22 +144,31 @@ body {
     align-items: center;
     margin-bottom: 20px;
     padding-bottom: 10px;
-    border-bottom: 1px solid #ddd;
+    border-bottom: 1px solid #75aadb; /* Borde celeste */
+}
+
+.header h1 {
+    color: #2a5caa; /* Azul más oscuro */
 }
 
 .welcome-message {
     margin-bottom: 20px;
 }
 
+.welcome-message h2 {
+    color: #75aadb; /* Celeste */
+}
+
 .user-list-container {
     background-color: #f9f9f9;
     padding: 15px;
     border-radius: 4px;
+    border: 1px solid #e0e0e0;
 }
 
 .user-list-container h3 {
     margin-bottom: 15px;
-    color: #4CAF50;
+    color: #2a5caa; /* Azul más oscuro */
 }
 
 #users-table {
@@ -170,10 +183,50 @@ body {
 }
 
 #users-table th {
-    background-color: #4CAF50;
+    background-color: #75aadb; /* Celeste */
     color: white;
 }
 
+#users-table tr:nth-child(even) {
+    background-color: #f0f8ff; /* Celeste muy claro */
+}
+
 #users-table tr:hover {
-    background-color: #f5f5f5;
+    background-color: #ffde59; /* Amarillo para hover */
+}
+
+/* Estilos para el botón de eliminar */
+.btn-delete {
+    background-color: #f44336; /* Rojo */
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.3s;
+}
+
+.btn-delete:hover {
+    background-color: #d32f2f; /* Rojo más oscuro */
+}
+
+.action-column {
+    text-align: center;
+    width: 100px;
+}
+
+/* Estilo para marcar al usuario actual */
+.current-user-badge {
+    background-color: #ffde59; /* Amarillo */
+    color: #333;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+/* Estilo para mensaje en el dashboard */
+#dashboard-message {
+    margin-bottom: 15px;
 }
