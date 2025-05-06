@@ -241,7 +241,7 @@ app.delete('/api/users/:id', verifyToken, (req, res) => {
   });
 });
 
-// NUEVA RUTA: Actualizar datos de un usuario
+// Actualizar datos de un usuario
 app.put('/api/users/:id', verifyToken, async (req, res) => {
   const userId = req.params.id;
   const { nombre, apellido } = req.body;
@@ -289,7 +289,7 @@ app.put('/api/users/:id', verifyToken, async (req, res) => {
   });
 });
 
-// NUEVA RUTA: Cambiar contraseña
+// Cambiar contraseña
 app.put('/api/users/:id/password', verifyToken, async (req, res) => {
   const userId = req.params.id;
   const { currentPassword, newPassword } = req.body;

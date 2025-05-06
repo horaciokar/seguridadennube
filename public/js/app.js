@@ -32,6 +32,33 @@ if (!document.getElementById('dashboard-message')) {
     userDashboard.insertBefore(dashboardMessage, userDashboard.firstChild);
 }
 
+// Asegurarse de que todos los modales estén ocultos al cargar la página
+document.addEventListener('DOMContentLoaded', () => {
+    editUserModal.classList.add('hidden');
+    passwordModal.classList.add('hidden');
+    
+    // Resto del código DOMContentLoaded sigue abajo...
+    const token = localStorage.getItem('token');
+    const user = localStorage.getItem('user');
+    
+    if (token && user) {
+        // Verificar si el token es válido antes de mostrar el dashboard
+        verifyToken(token)
+            .then(isValid => {
+                if (isValid) {
+                    showDashboard();
+                } else {
+                    // Si el token no es válido, cerrar sesión
+                    logout();
+                }
+            })
+            .catch(() => {
+                // En caso de error, cerrar sesión
+                logout();
+            });
+    }
+});
+
 // Cambiar entre pestañas de login y registro
 loginTab.addEventListener('click', () => {
     loginTab.classList.add('active');
@@ -121,8 +148,19 @@ function openEditModal(user) {
     document.getElementById('edit-user-id').value = user.id;
     document.getElementById('edit-nombre').value = user.nombre;
     document.getElementById('edit-apellido').value = user.apellido;
-    document.getElementById('edit-email').value = user.email;
     
+    const emailInput = document.getElementById('edit-email');
+    emailInput.value = user.email;
+    emailInput.disabled = true; // Asegurar que esté deshabilitado
+    emailInput.setAttribute('readonly', 'readonly'); // También añadir readonly para mayor seguridad
+    
+    // Resetear mensajes
+    const editModalMessage = document.getElementById('edit-modal-message');
+    if (editModalMessage) {
+        editModalMessage.style.display = 'none';
+    }
+    
+    // Mostrar el modal
     editUserModal.classList.remove('hidden');
 }
 
@@ -318,6 +356,10 @@ function showDashboard() {
     authForms.classList.add('hidden');
     userDashboard.classList.remove('hidden');
     
+    // Asegurarse de que los modales estén ocultos
+    editUserModal.classList.add('hidden');
+    passwordModal.classList.add('hidden');
+    
     // Cargar lista de usuarios
     loadUsers();
 }
@@ -492,7 +534,7 @@ editUserForm.addEventListener('submit', async (e) => {
 });
 
 // Función para cerrar sesión
-logoutBtn.addEventListener('click', () => {
+function logout() {
     // Limpiar localStorage
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -501,13 +543,20 @@ logoutBtn.addEventListener('click', () => {
     authForms.classList.remove('hidden');
     userDashboard.classList.add('hidden');
     
+    // Asegurarse de que los modales estén ocultos
+    editUserModal.classList.add('hidden');
+    passwordModal.classList.add('hidden');
+    
     // Limpiar formularios
     loginForm.reset();
     registerForm.reset();
     
     // Resetear pestañas
     loginTab.click();
-});
+}
+
+// Event listener para cerrar sesión
+logoutBtn.addEventListener('click', logout);
 
 // Event listener para abrir modal de cambio de contraseña
 changePasswordBtn.addEventListener('click', () => {
@@ -536,6 +585,10 @@ window.addEventListener('click', (e) => {
 
 // Verificar si el usuario ya tiene sesión iniciada al cargar la página
 document.addEventListener('DOMContentLoaded', () => {
+    // Asegurar que los modales estén ocultos al inicio
+    editUserModal.classList.add('hidden');
+    passwordModal.classList.add('hidden');
+    
     const token = localStorage.getItem('token');
     const user = localStorage.getItem('user');
     
@@ -547,12 +600,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     showDashboard();
                 } else {
                     // Si el token no es válido, cerrar sesión
-                    logoutBtn.click();
+                    logout();
                 }
             })
             .catch(() => {
                 // En caso de error, cerrar sesión
-                logoutBtn.click();
+                logout();
             });
     }
 });

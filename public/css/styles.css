@@ -134,7 +134,7 @@ body {
 }
 
 .hidden {
-    display: none;
+    display: none !important; /* Asegurarse de que hidden funcione siempre */
 }
 
 /* Estilos del Dashboard */
@@ -274,28 +274,81 @@ body {
     justify-content: center;
     align-items: center;
     z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.modal:not(.hidden) {
+    opacity: 1;
+    visibility: visible;
 }
 
 .modal-content {
     background-color: white;
     border-radius: 8px;
-    padding: 20px;
+    padding: 25px;
     width: 400px;
     max-width: 90%;
     position: relative;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     border: 2px solid #75aadb; /* Borde celeste */
 }
 
+.modal-content h2 {
+    color: #2a5caa; /* Azul más oscuro */
+    margin-bottom: 20px;
+    text-align: center;
+    border-bottom: 1px solid #75aadb;
+    padding-bottom: 10px;
+}
+
+/* Estilo para el botón de guardar cambios en el modal */
+.modal-content .btn {
+    background-color: #75aadb; /* Celeste */
+    margin-top: 15px;
+    padding: 12px;
+    font-weight: bold;
+    transition: all 0.3s ease;
+}
+
+.modal-content .btn:hover {
+    background-color: #5d90c0; /* Celeste más oscuro */
+    transform: translateY(-2px);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+/* Estilo para la X de cerrar */
 .close-modal {
     position: absolute;
-    top: 10px;
+    top: 15px;
     right: 15px;
     font-size: 24px;
     cursor: pointer;
-    color: #888;
+    color: #75aadb; /* Celeste */
+    width: 30px;
+    height: 30px;
+    text-align: center;
+    line-height: 30px;
+    border-radius: 50%;
+    transition: all 0.3s ease;
 }
 
 .close-modal:hover {
-    color: #333;
+    background-color: #f0f4f8;
+    color: #2a5caa; /* Azul más oscuro */
+}
+
+/* Ajustar etiquetas en el modal */
+.modal-content .form-group label {
+    color: #2a5caa; /* Azul más oscuro */
+    font-weight: bold;
+}
+
+/* Estilo mejorado para campos deshabilitados */
+input:disabled, input[readonly] {
+    background-color: #f2f2f2;
+    color: #666;
+    cursor: not-allowed;
+    border: 1px solid #ddd;
 }
