@@ -35,6 +35,35 @@ db.connect(err => {
     return;
   }
   console.log('Conexión exitosa a la base de datos MySQL');
+  
+  // Verificar si existe la columna ultimo_acceso, si no, crearla
+  db.query(`
+    SELECT COLUMN_NAME 
+    FROM INFORMATION_SCHEMA.COLUMNS 
+    WHERE TABLE_SCHEMA = ? 
+    AND TABLE_NAME = 'users' 
+    AND COLUMN_NAME = 'ultimo_acceso'`, 
+    [process.env.DB_NAME], 
+    (err, results) => {
+      if (err) {
+        console.error('Error al verificar columnas:', err);
+        return;
+      }
+      
+      if (results.length === 0) {
+        // La columna no existe, crearla
+        db.query(`
+          ALTER TABLE users 
+          ADD COLUMN ultimo_acceso TIMESTAMP NULL DEFAULT NULL
+        `, (err) => {
+          if (err) {
+            console.error('Error al añadir columna ultimo_acceso:', err);
+          } else {
+            console.log('Columna ultimo_acceso añadida correctamente');
+          }
+        });
+      }
+    });
 });
 
 // Middleware para verificar JWT
@@ -129,6 +158,14 @@ app.post('/api/login', (req, res) => {
       return res.status(401).json({ message: 'Credenciales incorrectas' });
     }
     
+    // Actualizar último acceso
+    const now = new Date();
+    db.query('UPDATE users SET ultimo_acceso = ? WHERE id = ?', [now, user.id], (updateErr) => {
+      if (updateErr) {
+        console.error('Error al actualizar último acceso:', updateErr);
+      }
+    });
+    
     // Generar token JWT
     const token = jwt.sign(
       { id: user.id, email: user.email },
@@ -151,7 +188,7 @@ app.post('/api/login', (req, res) => {
 
 // Ruta protegida para obtener todos los usuarios (requiere autenticación)
 app.get('/api/users', verifyToken, (req, res) => {
-  db.query('SELECT id, nombre, apellido, email, fecha_registro FROM users', (err, results) => {
+  db.query('SELECT id, nombre, apellido, email, fecha_registro, ultimo_acceso FROM users', (err, results) => {
     if (err) {
       console.error('Error al obtener usuarios:', err);
       return res.status(500).json({ message: 'Error del servidor' });
@@ -161,7 +198,7 @@ app.get('/api/users', verifyToken, (req, res) => {
   });
 });
 
-// NUEVA RUTA: Eliminar usuario por ID
+// Eliminar usuario por ID
 app.delete('/api/users/:id', verifyToken, (req, res) => {
   const userId = req.params.id;
   
@@ -201,6 +238,123 @@ app.delete('/api/users/:id', verifyToken, (req, res) => {
         userId: userId
       });
     });
+  });
+});
+
+// NUEVA RUTA: Actualizar datos de un usuario
+app.put('/api/users/:id', verifyToken, async (req, res) => {
+  const userId = req.params.id;
+  const { nombre, apellido } = req.body;
+  
+  // Verificar que el ID sea válido
+  if (!userId || isNaN(userId)) {
+    return res.status(400).json({ message: 'ID de usuario inválido' });
+  }
+  
+  // Verificar campos obligatorios
+  if (!nombre || !apellido) {
+    return res.status(400).json({ message: 'Nombre y apellido son obligatorios' });
+  }
+  
+  console.log(`Intento de actualizar usuario con ID: ${userId}`);
+  
+  // Verificar si el usuario existe
+  db.query('SELECT * FROM users WHERE id = ?', [userId], (err, results) => {
+    if (err) {
+      console.error('Error al buscar usuario:', err);
+      return res.status(500).json({ message: 'Error del servidor' });
+    }
+    
+    if (results.length === 0) {
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+    
+    // Actualizar los datos del usuario
+    db.query(
+      'UPDATE users SET nombre = ?, apellido = ? WHERE id = ?',
+      [nombre, apellido, userId],
+      (err, result) => {
+        if (err) {
+          console.error('Error al actualizar usuario:', err);
+          return res.status(500).json({ message: 'Error al actualizar el usuario' });
+        }
+        
+        console.log(`Usuario con ID ${userId} actualizado correctamente`);
+        return res.status(200).json({ 
+          message: 'Usuario actualizado correctamente',
+          userId: userId
+        });
+      }
+    );
+  });
+});
+
+// NUEVA RUTA: Cambiar contraseña
+app.put('/api/users/:id/password', verifyToken, async (req, res) => {
+  const userId = req.params.id;
+  const { currentPassword, newPassword } = req.body;
+  
+  // Verificar que el ID sea válido
+  if (!userId || isNaN(userId)) {
+    return res.status(400).json({ message: 'ID de usuario inválido' });
+  }
+  
+  // Solo el propio usuario puede cambiar su contraseña
+  if (parseInt(userId) !== req.user.id) {
+    return res.status(403).json({ message: 'No puedes cambiar la contraseña de otro usuario' });
+  }
+  
+  // Verificar campos obligatorios
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ message: 'Contraseña actual y nueva son obligatorias' });
+  }
+  
+  console.log(`Intento de cambiar contraseña de usuario con ID: ${userId}`);
+  
+  // Verificar si el usuario existe y su contraseña actual
+  db.query('SELECT * FROM users WHERE id = ?', [userId], async (err, results) => {
+    if (err) {
+      console.error('Error al buscar usuario:', err);
+      return res.status(500).json({ message: 'Error del servidor' });
+    }
+    
+    if (results.length === 0) {
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+    
+    const user = results[0];
+    
+    // Verificar la contraseña actual
+    const match = await bcrypt.compare(currentPassword, user.password);
+    
+    if (!match) {
+      return res.status(401).json({ message: 'La contraseña actual es incorrecta' });
+    }
+    
+    try {
+      // Hash de la nueva contraseña
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      
+      // Actualizar la contraseña
+      db.query(
+        'UPDATE users SET password = ? WHERE id = ?',
+        [hashedPassword, userId],
+        (err, result) => {
+          if (err) {
+            console.error('Error al actualizar contraseña:', err);
+            return res.status(500).json({ message: 'Error al actualizar la contraseña' });
+          }
+          
+          console.log(`Contraseña del usuario con ID ${userId} actualizada correctamente`);
+          return res.status(200).json({ 
+            message: 'Contraseña actualizada correctamente'
+          });
+        }
+      );
+    } catch (error) {
+      console.error('Error al hashear la nueva contraseña:', error);
+      return res.status(500).json({ message: 'Error interno del servidor' });
+    }
   });
 });
 
