@@ -1,3 +1,235 @@
+// Configuración de la API
+const API_URL = 'https://seguridadenredes.ddns.net/api';
+
+// Referencias a elementos del DOM con verificación de existencia
+const loginTab = document.getElementById('login-tab');
+const registerTab = document.getElementById('register-tab');
+const loginForm = document.getElementById('login-form');
+const registerForm = document.getElementById('register-form');
+const authForms = document.getElementById('auth-forms');
+const userDashboard = document.getElementById('user-dashboard');
+const logoutBtn = document.getElementById('logout-btn');
+const userNameSpan = document.getElementById('user-name');
+const usersList = document.getElementById('users-list');
+const loginMessage = document.getElementById('login-message');
+const registerMessage = document.getElementById('register-message');
+const dashboardMessage = document.getElementById('dashboard-message') || document.createElement('div');
+
+// Referencias a elementos de modales
+const changePasswordBtn = document.getElementById('change-password-btn');
+const passwordModal = document.getElementById('password-modal');
+const changePasswordForm = document.getElementById('change-password-form');
+const passwordModalMessage = document.getElementById('password-modal-message');
+const editUserModal = document.getElementById('edit-user-modal');
+const editUserForm = document.getElementById('edit-user-form');
+const editModalMessage = document.getElementById('edit-modal-message');
+const loginHistoryModal = document.getElementById('login-history-modal');
+const loginHistoryList = document.getElementById('login-history-list');
+const historyUserName = document.getElementById('history-user-name');
+const historyUserEmail = document.getElementById('history-user-email');
+const closeModalBtns = document.querySelectorAll('.close-modal');
+
+// Referencias a elementos de pestañas del dashboard
+const usersTab = document.getElementById('users-tab');
+const myLoginTab = document.getElementById('my-login-tab');
+const usersContent = document.getElementById('users-content');
+const myLoginContent = document.getElementById('my-login-content');
+const myLoginList = document.getElementById('my-login-list');
+
+// Console log para debug
+console.log("Elementos del DOM:", {
+  loginTab: !!loginTab,
+  registerTab: !!registerTab,
+  loginForm: !!loginForm,
+  registerForm: !!registerForm,
+  authForms: !!authForms,
+  userDashboard: !!userDashboard,
+  logoutBtn: !!logoutBtn,
+  userNameSpan: !!userNameSpan,
+  usersList: !!usersList,
+  loginMessage: !!loginMessage,
+  registerMessage: !!registerMessage
+});
+
+// Si no existe el elemento de mensaje en el dashboard, crearlo
+if (!document.getElementById('dashboard-message') && userDashboard) {
+    dashboardMessage.id = 'dashboard-message';
+    dashboardMessage.className = 'message';
+    userDashboard.insertBefore(dashboardMessage, userDashboard.firstChild);
+}
+
+// Asegurarse de que todos los modales estén ocultos al cargar la página
+document.addEventListener('DOMContentLoaded', () => {
+    if (editUserModal) editUserModal.classList.add('hidden');
+    if (passwordModal) passwordModal.classList.add('hidden');
+    if (loginHistoryModal) loginHistoryModal.classList.add('hidden');
+    
+    // Resto del código DOMContentLoaded sigue abajo...
+    const token = localStorage.getItem('token');
+    const user = localStorage.getItem('user');
+    
+    if (token && user) {
+        // Verificar si el token es válido antes de mostrar el dashboard
+        verifyToken(token)
+            .then(isValid => {
+                if (isValid) {
+                    showDashboard();
+                } else {
+                    // Si el token no es válido, cerrar sesión
+                    logout();
+                }
+            })
+            .catch(() => {
+                // En caso de error, cerrar sesión
+                logout();
+            });
+    }
+});
+
+// Cambiar entre pestañas de login y registro
+if (loginTab && registerTab) {
+    loginTab.addEventListener('click', () => {
+        loginTab.classList.add('active');
+        registerTab.classList.remove('active');
+        if (loginForm) loginForm.classList.remove('hidden');
+        if (registerForm) registerForm.classList.add('hidden');
+    });
+
+    registerTab.addEventListener('click', () => {
+        registerTab.classList.add('active');
+        loginTab.classList.remove('active');
+        if (registerForm) registerForm.classList.remove('hidden');
+        if (loginForm) loginForm.classList.add('hidden');
+    });
+}
+
+// Cambiar entre pestañas del dashboard
+if (usersTab && myLoginTab) {
+    usersTab.addEventListener('click', () => {
+        usersTab.classList.add('active');
+        myLoginTab.classList.remove('active');
+        if (usersContent) usersContent.classList.add('active');
+        if (myLoginContent) myLoginContent.classList.remove('active');
+    });
+
+    myLoginTab.addEventListener('click', () => {
+        myLoginTab.classList.add('active');
+        usersTab.classList.remove('active');
+        if (myLoginContent) myLoginContent.classList.add('active');
+        if (usersContent) usersContent.classList.remove('active');
+        
+        // Cargar mi historial de conexiones si no se ha cargado aún
+        if (myLoginList && myLoginList.innerHTML === '') {
+            loadMyLoginHistory();
+        }
+    });
+}
+
+// Función para mostrar mensajes
+function showMessage(element, message, isError = false) {
+    if (!element) return;
+    
+    element.textContent = message;
+    element.classList.remove('error', 'success');
+    element.classList.add(isError ? 'error' : 'success');
+    
+    // Hacer visible el mensaje
+    element.style.display = 'block';
+    
+    // Ocultar el mensaje después de 5 segundos
+    setTimeout(() => {
+        element.style.display = 'none';
+    }, 5000);
+}
+
+// Función para formatear fechas
+function formatDate(dateString) {
+    if (!dateString) return 'N/A';
+    
+    try {
+        const fecha = new Date(dateString);
+        return `${fecha.getDate().toString().padStart(2, '0')}/${(fecha.getMonth() + 1).toString().padStart(2, '0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2, '0')}:${fecha.getMinutes().toString().padStart(2, '0')}`;
+    } catch (e) {
+        console.error('Error al formatear fecha:', e);
+        return 'N/A';
+    }
+}
+
+// Función para eliminar un usuario
+async function deleteUser(userId) {
+    try {
+        const token = localStorage.getItem('token');
+        
+        if (!token) {
+            throw new Error('No hay token disponible');
+        }
+        
+        // Confirmar antes de eliminar
+        if (!confirm('¿Estás seguro de que deseas eliminar este usuario?')) {
+            return;
+        }
+        
+        if (dashboardMessage) {
+            showMessage(dashboardMessage, 'Eliminando usuario...', false);
+        }
+        
+        const response = await fetch(`${API_URL}/users/${userId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || `Error al eliminar usuario: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        if (dashboardMessage) {
+            showMessage(dashboardMessage, 'Usuario eliminado correctamente', false);
+        }
+        
+        // Recargar la lista de usuarios
+        loadUsers();
+        
+    } catch (error) {
+        console.error('Error al eliminar usuario:', error);
+        if (dashboardMessage) {
+            showMessage(dashboardMessage, `Error: ${error.message}`, true);
+        }
+    }
+}
+
+// Función para abrir el modal de edición de usuario
+function openEditModal(user) {
+    if (!editUserModal) return;
+    
+    const idInput = document.getElementById('edit-user-id');
+    const nombreInput = document.getElementById('edit-nombre');
+    const apellidoInput = document.getElementById('edit-apellido');
+    const emailInput = document.getElementById('edit-email');
+    
+    if (idInput) idInput.value = user.id;
+    if (nombreInput) nombreInput.value = user.nombre;
+    if (apellidoInput) apellidoInput.value = user.apellido;
+    
+    if (emailInput) {
+        emailInput.value = user.email;
+        emailInput.disabled = true; // Asegurar que esté deshabilitado
+        emailInput.setAttribute('readonly', 'readonly'); // También añadir readonly para mayor seguridad
+    }
+    
+    // Resetear mensajes
+    if (editModalMessage) {
+        editModalMessage.style.display = 'none';
+    }
+    
+    // Mostrar el modal
+    editUserModal.classList.remove('hidden');
+}
+
 // Función para mostrar el historial de conexiones de un usuario
 async function showLoginHistory(userId, userName, userEmail) {
     try {
@@ -7,9 +239,11 @@ async function showLoginHistory(userId, userName, userEmail) {
             throw new Error('No hay token disponible');
         }
         
+        if (!loginHistoryModal || !loginHistoryList) return;
+        
         // Mostrar información del usuario en el modal
-        historyUserName.textContent = userName;
-        historyUserEmail.textContent = userEmail;
+        if (historyUserName) historyUserName.textContent = userName;
+        if (historyUserEmail) historyUserEmail.textContent = userEmail;
         
         // Limpiar lista actual
         loginHistoryList.innerHTML = '<tr><td colspan="4" style="text-align:center;">Cargando...</td></tr>';
@@ -75,7 +309,9 @@ async function showLoginHistory(userId, userName, userEmail) {
         
     } catch (error) {
         console.error('Error:', error);
-        loginHistoryList.innerHTML = `<tr><td colspan="4" style="text-align:center;color:red;">Error: ${error.message}</td></tr>`;
+        if (loginHistoryList) {
+            loginHistoryList.innerHTML = `<tr><td colspan="4" style="text-align:center;color:red;">Error: ${error.message}</td></tr>`;
+        }
     }
 }
 
@@ -85,7 +321,7 @@ async function loadMyLoginHistory() {
         const token = localStorage.getItem('token');
         const user = JSON.parse(localStorage.getItem('user'));
         
-        if (!token || !user) {
+        if (!token || !user || !myLoginList) {
             throw new Error('No hay información de sesión disponible');
         }
         
@@ -147,7 +383,9 @@ async function loadMyLoginHistory() {
         
     } catch (error) {
         console.error('Error:', error);
-        myLoginList.innerHTML = `<tr><td colspan="4" style="text-align:center;color:red;">Error: ${error.message}</td></tr>`;
+        if (myLoginList) {
+            myLoginList.innerHTML = `<tr><td colspan="4" style="text-align:center;color:red;">Error: ${error.message}</td></tr>`;
+        }
     }
 }
 
@@ -160,7 +398,9 @@ async function updateUser(userId, userData) {
             throw new Error('No hay token disponible');
         }
         
-        showMessage(editModalMessage, 'Actualizando datos...', false);
+        if (editModalMessage) {
+            showMessage(editModalMessage, 'Actualizando datos...', false);
+        }
         
         const response = await fetch(`${API_URL}/users/${userId}`, {
             method: 'PUT',
@@ -177,7 +417,9 @@ async function updateUser(userId, userData) {
         }
         
         const data = await response.json();
-        showMessage(editModalMessage, 'Usuario actualizado correctamente', false);
+        if (editModalMessage) {
+            showMessage(editModalMessage, 'Usuario actualizado correctamente', false);
+        }
         
         // Actualizar usuario en localStorage si es el usuario actual
         const currentUser = JSON.parse(localStorage.getItem('user'));
@@ -187,19 +429,25 @@ async function updateUser(userId, userData) {
             localStorage.setItem('user', JSON.stringify(currentUser));
             
             // Actualizar nombre en el dashboard
-            userNameSpan.textContent = `${currentUser.nombre} ${currentUser.apellido}`;
+            if (userNameSpan) {
+                userNameSpan.textContent = `${currentUser.nombre} ${currentUser.apellido}`;
+            }
         }
         
         // Cerrar el modal después de 2 segundos
-        setTimeout(() => {
-            editUserModal.classList.add('hidden');
-            // Recargar la lista de usuarios
-            loadUsers();
-        }, 2000);
+        if (editUserModal) {
+            setTimeout(() => {
+                editUserModal.classList.add('hidden');
+                // Recargar la lista de usuarios
+                loadUsers();
+            }, 2000);
+        }
         
     } catch (error) {
         console.error('Error al actualizar usuario:', error);
-        showMessage(editModalMessage, `Error: ${error.message}`, true);
+        if (editModalMessage) {
+            showMessage(editModalMessage, `Error: ${error.message}`, true);
+        }
     }
 }
 
@@ -212,7 +460,9 @@ async function changePassword(userId, passwordData) {
             throw new Error('No hay token disponible');
         }
         
-        showMessage(passwordModalMessage, 'Actualizando contraseña...', false);
+        if (passwordModalMessage) {
+            showMessage(passwordModalMessage, 'Actualizando contraseña...', false);
+        }
         
         const response = await fetch(`${API_URL}/users/${userId}/password`, {
             method: 'PUT',
@@ -229,103 +479,147 @@ async function changePassword(userId, passwordData) {
         }
         
         const data = await response.json();
-        showMessage(passwordModalMessage, 'Contraseña actualizada correctamente', false);
+        if (passwordModalMessage) {
+            showMessage(passwordModalMessage, 'Contraseña actualizada correctamente', false);
+        }
         
         // Cerrar el modal después de 2 segundos
-        setTimeout(() => {
-            passwordModal.classList.add('hidden');
-            changePasswordForm.reset();
-        }, 2000);
+        if (passwordModal && changePasswordForm) {
+            setTimeout(() => {
+                passwordModal.classList.add('hidden');
+                changePasswordForm.reset();
+            }, 2000);
+        }
         
     } catch (error) {
         console.error('Error al cambiar contraseña:', error);
-        showMessage(passwordModalMessage, `Error: ${error.message}`, true);
+        if (passwordModalMessage) {
+            showMessage(passwordModalMessage, `Error: ${error.message}`, true);
+        }
     }
 }
 
 // Función para manejar el registro de usuarios
-registerForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    
-    const nombre = document.getElementById('register-nombre').value.trim();
-    const apellido = document.getElementById('register-apellido').value.trim();
-    const email = document.getElementById('register-email').value.trim();
-    const password = document.getElementById('register-password').value;
-    
-    if (!nombre || !apellido || !email || !password) {
-        showMessage(registerMessage, 'Todos los campos son obligatorios', true);
-        return;
-    }
-    
-    try {
-        const response = await fetch(`${API_URL}/register`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ nombre, apellido, email, password })
-        });
+if (registerForm) {
+    registerForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
         
-        const data = await response.json();
+        const nombreInput = document.getElementById('register-nombre');
+        const apellidoInput = document.getElementById('register-apellido');
+        const emailInput = document.getElementById('register-email');
+        const passwordInput = document.getElementById('register-password');
         
-        if (!response.ok) {
-            throw new Error(data.message || 'Error en el registro');
+        if (!nombreInput || !apellidoInput || !emailInput || !passwordInput) {
+            if (registerMessage) {
+                showMessage(registerMessage, 'Error: Faltan campos en el formulario', true);
+            }
+            return;
         }
         
-        showMessage(registerMessage, 'Registro exitoso. Ahora puedes iniciar sesión.');
+        const nombre = nombreInput.value.trim();
+        const apellido = apellidoInput.value.trim();
+        const email = emailInput.value.trim();
+        const password = passwordInput.value;
         
-        // Limpiar el formulario
-        registerForm.reset();
+        if (!nombre || !apellido || !email || !password) {
+            if (registerMessage) {
+                showMessage(registerMessage, 'Todos los campos son obligatorios', true);
+            }
+            return;
+        }
         
-        // Cambiar a la pestaña de login después de un registro exitoso
-        setTimeout(() => {
-            loginTab.click();
-        }, 2000);
-        
-    } catch (error) {
-        showMessage(registerMessage, error.message, true);
-    }
-});
+        try {
+            const response = await fetch(`${API_URL}/register`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ nombre, apellido, email, password })
+            });
+            
+            const data = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(data.message || 'Error en el registro');
+            }
+            
+            if (registerMessage) {
+                showMessage(registerMessage, 'Registro exitoso. Ahora puedes iniciar sesión.');
+            }
+            
+            // Limpiar el formulario
+            registerForm.reset();
+            
+            // Cambiar a la pestaña de login después de un registro exitoso
+            if (loginTab) {
+                setTimeout(() => {
+                    loginTab.click();
+                }, 2000);
+            }
+            
+        } catch (error) {
+            if (registerMessage) {
+                showMessage(registerMessage, error.message, true);
+            }
+        }
+    });
+}
 
 // Función para manejar el inicio de sesión
-loginForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    
-    const email = document.getElementById('login-email').value.trim();
-    const password = document.getElementById('login-password').value;
-    
-    if (!email || !password) {
-        showMessage(loginMessage, 'Email y contraseña son obligatorios', true);
-        return;
-    }
-    
-    try {
-        const response = await fetch(`${API_URL}/login`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ email, password })
-        });
+if (loginForm) {
+    loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
         
-        if (!response.ok) {
-            const data = await response.json();
-            throw new Error(data.message || 'Error en el inicio de sesión');
+        const emailInput = document.getElementById('login-email');
+        const passwordInput = document.getElementById('login-password');
+        
+        if (!emailInput || !passwordInput) {
+            if (loginMessage) {
+                showMessage(loginMessage, 'Error: Faltan campos en el formulario', true);
+            }
+            return;
         }
         
-        const data = await response.json();
+        const email = emailInput.value.trim();
+        const password = passwordInput.value;
         
-        // Guardar token en localStorage
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
+        if (!email || !password) {
+            if (loginMessage) {
+                showMessage(loginMessage, 'Email y contraseña son obligatorios', true);
+            }
+            return;
+        }
         
-        // Mostrar dashboard
-        showDashboard();
-        
-    } catch (error) {
-        showMessage(loginMessage, error.message || 'Error al conectar con el servidor', true);
-    }
-});
+        try {
+            const response = await fetch(`${API_URL}/login`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ email, password })
+            });
+            
+            if (!response.ok) {
+                const data = await response.json();
+                throw new Error(data.message || 'Error en el inicio de sesión');
+            }
+            
+            const data = await response.json();
+            
+            // Guardar token en localStorage
+            localStorage.setItem('token', data.token);
+            localStorage.setItem('user', JSON.stringify(data.user));
+            
+            // Mostrar dashboard
+            showDashboard();
+            
+        } catch (error) {
+            if (loginMessage) {
+                showMessage(loginMessage, error.message || 'Error al conectar con el servidor', true);
+            }
+        }
+    });
+}
 
 // Función para mostrar el dashboard después de iniciar sesión
 function showDashboard() {
@@ -337,22 +631,46 @@ function showDashboard() {
     }
     
     // Mostrar nombre del usuario
-    userNameSpan.textContent = `${user.nombre} ${user.apellido}`;
+    if (userNameSpan) {
+        userNameSpan.textContent = `${user.nombre} ${user.apellido}`;
+    }
     
     // Ocultar formularios y mostrar dashboard
-    authForms.classList.add('hidden');
-    userDashboard.classList.remove('hidden');
+    if (authForms) authForms.classList.add('hidden');
+    if (userDashboard) userDashboard.classList.remove('hidden');
     
     // Asegurarse de que los modales estén ocultos
-    editUserModal.classList.add('hidden');
-    passwordModal.classList.add('hidden');
-    loginHistoryModal.classList.add('hidden');
+    if (editUserModal) editUserModal.classList.add('hidden');
+    if (passwordModal) passwordModal.classList.add('hidden');
+    if (loginHistoryModal) loginHistoryModal.classList.add('hidden');
     
     // Asegurarse de que estamos en la pestaña de usuarios
-    usersTab.click();
+    if (usersTab) usersTab.click();
     
     // Cargar lista de usuarios
     loadUsers();
+    
+    // Agregar botón para ir a GPS
+    const dashboardHeader = document.querySelector('.header-buttons');
+    if (dashboardHeader && !document.getElementById('gps-dashboard-btn')) {
+        const gpsButton = document.createElement('button');
+        gpsButton.id = 'gps-dashboard-btn';
+        gpsButton.className = 'btn btn-secondary';
+        gpsButton.textContent = 'Panel GPS';
+        gpsButton.style.marginRight = '10px';
+        
+        // Insertar antes del botón de cambiar contraseña
+        if (changePasswordBtn) {
+            dashboardHeader.insertBefore(gpsButton, changePasswordBtn);
+        } else {
+            dashboardHeader.insertBefore(gpsButton, dashboardHeader.firstChild);
+        }
+        
+        // Agregar event listener
+        gpsButton.addEventListener('click', () => {
+            window.location.href = 'gps.html';
+        });
+    }
 }
 
 // Función para cargar la lista de usuarios desde la API
@@ -365,7 +683,9 @@ async function loadUsers() {
         }
         
         // Mostrar mensaje de carga
-        showMessage(dashboardMessage, 'Cargando usuarios...', false);
+        if (dashboardMessage) {
+            showMessage(dashboardMessage, 'Cargando usuarios...', false);
+        }
         
         console.log('Cargando usuarios con token:', token);
         console.log('URL de la API:', `${API_URL}/users`);
@@ -394,148 +714,192 @@ async function loadUsers() {
         }
         
         // Limpiar lista actual
-        usersList.innerHTML = '';
+        if (usersList) usersList.innerHTML = '';
         
         // Mostrar usuarios en la tabla
         if (users.length === 0) {
-            const emptyRow = document.createElement('tr');
-            emptyRow.innerHTML = '<td colspan="8" class="text-center">No hay usuarios registrados</td>';
-            usersList.appendChild(emptyRow);
+            if (usersList) {
+                const emptyRow = document.createElement('tr');
+                emptyRow.innerHTML = '<td colspan="8" class="text-center">No hay usuarios registrados</td>';
+                usersList.appendChild(emptyRow);
+            }
         } else {
             // Obtener el usuario actual
             const currentUser = JSON.parse(localStorage.getItem('user'));
             
-            users.forEach(user => {
-                const row = document.createElement('tr');
-                
-                // Formatear fechas
-                const fechaRegistro = formatDate(user.fecha_registro);
-                const ultimoAcceso = formatDate(user.ultimo_acceso);
-                
-                // Columnas básicas
-                row.innerHTML = `
-                    <td>${user.id || 'N/A'}</td>
-                    <td>${user.nombre || 'N/A'}</td>
-                    <td>${user.apellido || 'N/A'}</td>
-                    <td>${user.email || 'N/A'}</td>
-                    <td>${fechaRegistro}</td>
-                    <td>${ultimoAcceso}</td>
-                    <td>${user.ip_address || 'N/A'}</td>
-                    <td class="action-column">
-                        ${currentUser.id === user.id ? 
-                            '<span class="current-user-badge">Tú</span>' : 
-                            `<button class="btn-edit" data-id="${user.id}">Editar</button>
-                             <button class="btn-history" data-id="${user.id}" data-name="${user.nombre} ${user.apellido}" data-email="${user.email}">Historial</button>
-                             <button class="btn-delete" data-id="${user.id}">Eliminar</button>`}
-                    </td>
-                `;
-                
-                usersList.appendChild(row);
-                
-                // Añadir event listeners a los botones si no es el usuario actual
-                if (currentUser.id !== user.id) {
-                    // Botón eliminar
-                    const deleteButton = row.querySelector('.btn-delete');
-                    if (deleteButton) {
-                        deleteButton.addEventListener('click', function() {
-                            const userId = this.getAttribute('data-id');
-                            deleteUser(userId);
-                        });
-                    }
+            if (usersList) {
+                users.forEach(user => {
+                    const row = document.createElement('tr');
                     
-                    // Botón editar
-                    const editButton = row.querySelector('.btn-edit');
-                    if (editButton) {
-                        editButton.addEventListener('click', function() {
-                            const userId = this.getAttribute('data-id');
-                            // Buscar el usuario en el array de usuarios
-                            const userToEdit = users.find(u => u.id == userId);
-                            if (userToEdit) {
-                                openEditModal(userToEdit);
-                            }
-                        });
-                    }
+                    // Formatear fechas
+                    const fechaRegistro = formatDate(user.fecha_registro);
+                    const ultimoAcceso = formatDate(user.ultimo_acceso);
                     
-                    // Botón historial
-                    const historyButton = row.querySelector('.btn-history');
-                    if (historyButton) {
-                        historyButton.addEventListener('click', function() {
-                            const userId = this.getAttribute('data-id');
-                            const userName = this.getAttribute('data-name');
-                            const userEmail = this.getAttribute('data-email');
-                            showLoginHistory(userId, userName, userEmail);
-                        });
+                    // Columnas básicas
+                    row.innerHTML = `
+                        <td>${user.id || 'N/A'}</td>
+                        <td>${user.nombre || 'N/A'}</td>
+                        <td>${user.apellido || 'N/A'}</td>
+                        <td>${user.email || 'N/A'}</td>
+                        <td>${fechaRegistro}</td>
+                        <td>${ultimoAcceso}</td>
+                        <td>${user.ip_address || 'N/A'}</td>
+                        <td class="action-column">
+                            ${currentUser.id === user.id ? 
+                                '<span class="current-user-badge">Tú</span>' : 
+                                `<button class="btn-edit" data-id="${user.id}">Editar</button>
+                                 <button class="btn-history" data-id="${user.id}" data-name="${user.nombre} ${user.apellido}" data-email="${user.email}">Historial</button>
+                                 <button class="btn-delete" data-id="${user.id}">Eliminar</button>`}
+                        </td>
+                    `;
+                    
+                    usersList.appendChild(row);
+                    
+                    // Añadir event listeners a los botones si no es el usuario actual
+                    if (currentUser.id !== user.id) {
+                        // Botón eliminar
+                        const deleteButton = row.querySelector('.btn-delete');
+                        if (deleteButton) {
+                            deleteButton.addEventListener('click', function() {
+                                const userId = this.getAttribute('data-id');
+                                deleteUser(userId);
+                            });
+                        }
+                        
+                        // Botón editar
+                        const editButton = row.querySelector('.btn-edit');
+                        if (editButton) {
+                            editButton.addEventListener('click', function() {
+                                const userId = this.getAttribute('data-id');
+                                // Buscar el usuario en el array de usuarios
+                                const userToEdit = users.find(u => u.id == userId);
+                                if (userToEdit) {
+                                    openEditModal(userToEdit);
+                                }
+                            });
+                        }
+                        
+                        // Botón historial
+                        const historyButton = row.querySelector('.btn-history');
+                        if (historyButton) {
+                            historyButton.addEventListener('click', function() {
+                                const userId = this.getAttribute('data-id');
+                                const userName = this.getAttribute('data-name');
+                                const userEmail = this.getAttribute('data-email');
+                                showLoginHistory(userId, userName, userEmail);
+                            });
+                        }
                     }
-                }
-            });
+                });
+            }
         }
         
-        showMessage(dashboardMessage, 'Usuarios cargados correctamente', false);
+        if (dashboardMessage) {
+            showMessage(dashboardMessage, 'Usuarios cargados correctamente', false);
+        }
         
     } catch (error) {
         console.error('Error al cargar usuarios:', error);
-        showMessage(dashboardMessage, `Error: ${error.message}`, true);
+        if (dashboardMessage) {
+            showMessage(dashboardMessage, `Error: ${error.message}`, true);
+        }
     }
 }
 
 // Event listener para el formulario de cambio de contraseña
-changePasswordForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    
-    const currentPassword = document.getElementById('current-password').value;
-    const newPassword = document.getElementById('new-password').value;
-    const confirmPassword = document.getElementById('confirm-password').value;
-    
-    // Validaciones
-    if (!currentPassword || !newPassword || !confirmPassword) {
-        showMessage(passwordModalMessage, 'Todos los campos son obligatorios', true);
-        return;
-    }
-    
-    if (newPassword !== confirmPassword) {
-        showMessage(passwordModalMessage, 'Las nuevas contraseñas no coinciden', true);
-        return;
-    }
-    
-    if (newPassword.length < 6) {
-        showMessage(passwordModalMessage, 'La nueva contraseña debe tener al menos 6 caracteres', true);
-        return;
-    }
-    
-    // Obtener el ID del usuario actual
-    const currentUser = JSON.parse(localStorage.getItem('user'));
-    if (!currentUser) {
-        showMessage(passwordModalMessage, 'Error: No se pudo identificar al usuario actual', true);
-        return;
-    }
-    
-    // Enviar solicitud para cambiar contraseña
-    await changePassword(currentUser.id, {
-        currentPassword,
-        newPassword
+if (changePasswordForm) {
+    changePasswordForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const currentPasswordInput = document.getElementById('current-password');
+        const newPasswordInput = document.getElementById('new-password');
+        const confirmPasswordInput = document.getElementById('confirm-password');
+        
+        if (!currentPasswordInput || !newPasswordInput || !confirmPasswordInput) {
+            if (passwordModalMessage) {
+                showMessage(passwordModalMessage, 'Error: Faltan campos en el formulario', true);
+            }
+            return;
+        }
+        
+        const currentPassword = currentPasswordInput.value;
+        const newPassword = newPasswordInput.value;
+        const confirmPassword = confirmPasswordInput.value;
+        
+        // Validaciones
+        if (!currentPassword || !newPassword || !confirmPassword) {
+            if (passwordModalMessage) {
+                showMessage(passwordModalMessage, 'Todos los campos son obligatorios', true);
+            }
+            return;
+        }
+        
+        if (newPassword !== confirmPassword) {
+            if (passwordModalMessage) {
+                showMessage(passwordModalMessage, 'Las nuevas contraseñas no coinciden', true);
+            }
+            return;
+        }
+        
+        if (newPassword.length < 6) {
+            if (passwordModalMessage) {
+                showMessage(passwordModalMessage, 'La nueva contraseña debe tener al menos 6 caracteres', true);
+            }
+            return;
+        }
+        
+        // Obtener el ID del usuario actual
+        const currentUser = JSON.parse(localStorage.getItem('user'));
+        if (!currentUser) {
+            if (passwordModalMessage) {
+                showMessage(passwordModalMessage, 'Error: No se pudo identificar al usuario actual', true);
+            }
+            return;
+        }
+        
+        // Enviar solicitud para cambiar contraseña
+        await changePassword(currentUser.id, {
+            currentPassword,
+            newPassword
+        });
     });
-});
+}
 
 // Event listener para el formulario de edición de usuario
-editUserForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    
-    const userId = document.getElementById('edit-user-id').value;
-    const nombre = document.getElementById('edit-nombre').value.trim();
-    const apellido = document.getElementById('edit-apellido').value.trim();
-    
-    // Validaciones
-    if (!nombre || !apellido) {
-        showMessage(editModalMessage, 'Nombre y apellido son obligatorios', true);
-        return;
-    }
-    
-    // Enviar solicitud para actualizar usuario
-    await updateUser(userId, {
-        nombre,
-        apellido
+if (editUserForm) {
+    editUserForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const userIdInput = document.getElementById('edit-user-id');
+        const nombreInput = document.getElementById('edit-nombre');
+        const apellidoInput = document.getElementById('edit-apellido');
+        
+        if (!userIdInput || !nombreInput || !apellidoInput) {
+            if (editModalMessage) {
+                showMessage(editModalMessage, 'Error: Faltan campos en el formulario', true);
+            }
+            return;
+        }
+        
+        const userId = userIdInput.value;
+        const nombre = nombreInput.value.trim();
+        const apellido = apellidoInput.value.trim();
+        
+        // Validaciones
+        if (!nombre || !apellido) {
+            if (editModalMessage) {
+                showMessage(editModalMessage, 'Nombre y apellido son obligatorios', true);
+            }
+            return;
+        }
+        
+        // Enviar solicitud para actualizar usuario
+        await updateUser(userId, {
+            nombre,
+            apellido
+        });
     });
-});
+}
 
 // Función para cerrar sesión
 function logout() {
@@ -544,58 +908,82 @@ function logout() {
     localStorage.removeItem('user');
     
     // Mostrar formularios y ocultar dashboard
-    authForms.classList.remove('hidden');
-    userDashboard.classList.add('hidden');
+    if (authForms) authForms.classList.remove('hidden');
+    if (userDashboard) userDashboard.classList.add('hidden');
     
     // Asegurarse de que los modales estén ocultos
-    editUserModal.classList.add('hidden');
-    passwordModal.classList.add('hidden');
-    loginHistoryModal.classList.add('hidden');
+    if (editUserModal) editUserModal.classList.add('hidden');
+    if (passwordModal) passwordModal.classList.add('hidden');
+    if (loginHistoryModal) loginHistoryModal.classList.add('hidden');
     
     // Limpiar formularios
-    loginForm.reset();
-    registerForm.reset();
+    if (loginForm) loginForm.reset();
+    if (registerForm) registerForm.reset();
     
     // Resetear pestañas
-    loginTab.click();
+    if (loginTab) loginTab.click();
 }
 
 // Event listener para cerrar sesión
-logoutBtn.addEventListener('click', logout);
+if (logoutBtn) {
+    logoutBtn.addEventListener('click', logout);
+}
 
 // Event listener para abrir modal de cambio de contraseña
-changePasswordBtn.addEventListener('click', () => {
-    passwordModal.classList.remove('hidden');
-    passwordModalMessage.style.display = 'none';
-    changePasswordForm.reset();
-});
+if (changePasswordBtn) {
+    changePasswordBtn.addEventListener('click', () => {
+        if (passwordModal && passwordModalMessage) {
+            passwordModal.classList.remove('hidden');
+            passwordModalMessage.style.display = 'none';
+            if (changePasswordForm) changePasswordForm.reset();
+        }
+    });
+}
 
 // Event listeners para cerrar modales
-closeModalBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-        passwordModal.classList.add('hidden');
-        editUserModal.classList.add('hidden');
-        loginHistoryModal.classList.add('hidden');
+if (closeModalBtns) {
+    closeModalBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (passwordModal) passwordModal.classList.add('hidden');
+            if (editUserModal) editUserModal.classList.add('hidden');
+            if (loginHistoryModal) loginHistoryModal.classList.add('hidden');
+        });
     });
-});
+}
 
 // Cerrar modal al hacer clic fuera del contenido
 window.addEventListener('click', (e) => {
-    if (e.target === passwordModal) {
+    if (passwordModal && e.target === passwordModal) {
         passwordModal.classList.add('hidden');
     }
-    if (e.target === editUserModal) {
+    if (editUserModal && e.target === editUserModal) {
         editUserModal.classList.add('hidden');
     }
-    if (e.target === loginHistoryModal) {
+    if (loginHistoryModal && e.target === loginHistoryModal) {
         loginHistoryModal.classList.add('hidden');
     }
 });
 
-// Agregar botón para ir a GPS
+// Agregar botón para ir a GPS si existe (puede ya estar creado por showDashboard)
 const dashboardHeader = document.querySelector('.header-buttons');
-if (dashboardHeader && document.getElementById('gps-dashboard-btn')) {
-    document.getElementById('gps-dashboard-btn').addEventListener('click', () => {
+if (dashboardHeader && !document.getElementById('gps-dashboard-btn')) {
+    const gpsButton = document.createElement('button');
+    gpsButton.id = 'gps-dashboard-btn';
+    gpsButton.className = 'btn btn-secondary';
+    gpsButton.textContent = 'Panel GPS';
+    gpsButton.style.marginRight = '10px';
+    
+    // Intentar insertar en la posición adecuada
+    if (changePasswordBtn) {
+        dashboardHeader.insertBefore(gpsButton, changePasswordBtn);
+    } else if (logoutBtn) {
+        dashboardHeader.insertBefore(gpsButton, logoutBtn);
+    } else {
+        dashboardHeader.appendChild(gpsButton);
+    }
+    
+    // Agregar event listener
+    gpsButton.addEventListener('click', () => {
         window.location.href = 'gps.html';
     });
 }
@@ -603,9 +991,9 @@ if (dashboardHeader && document.getElementById('gps-dashboard-btn')) {
 // Verificar si el usuario ya tiene sesión iniciada al cargar la página
 document.addEventListener('DOMContentLoaded', () => {
     // Asegurar que los modales estén ocultos al inicio
-    editUserModal.classList.add('hidden');
-    passwordModal.classList.add('hidden');
-    loginHistoryModal.classList.add('hidden');
+    if (editUserModal) editUserModal.classList.add('hidden');
+    if (passwordModal) passwordModal.classList.add('hidden');
+    if (loginHistoryModal) loginHistoryModal.classList.add('hidden');
     
     const token = localStorage.getItem('token');
     const user = localStorage.getItem('user');
