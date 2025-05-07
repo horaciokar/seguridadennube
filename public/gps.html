@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de GPS</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/gps-styles.css">
+    <!-- Agregar Leaflet CSS para mapas -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+</head>
+<body>
+    <div class="container gps-container">
+        <!-- Panel de GPS (visible después de iniciar sesión) -->
+        <div id="gps-dashboard" class="dashboard">
+            <div class="header">
+                <h1>Sistema de Seguimiento GPS</h1>
+                <div class="header-buttons">
+                    <button id="back-to-users-btn" class="btn btn-secondary">Panel de Usuarios</button>
+                    <button id="logout-btn-gps" class="btn btn-danger">Cerrar Sesión</button>
+                </div>
+            </div>
+            
+            <div id="gps-message" class="message"></div>
+            
+            <div class="welcome-message">
+                <h2>Bienvenido, <span id="gps-user-name"></span>!</h2>
+            </div>
+            
+            <!-- Panel de control y filtros -->
+            <div class="gps-control-panel">
+                <div class="filter-section">
+                    <h3>Filtros</h3>
+                    <div class="filter-group">
+                        <label for="device-select">Dispositivo:</label>
+                        <select id="device-select">
+                            <option value="">Todos los dispositivos</option>
+                            <!-- Se cargarán dinámicamente -->
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="date-start">Fecha inicio:</label>
+                        <input type="date" id="date-start">
+                    </div>
+                    <div class="filter-group">
+                        <label for="date-end">Fecha fin:</label>
+                        <input type="date" id="date-end">
+                    </div>
+                    <div class="filter-group">
+                        <label for="limit-select">Registros:</label>
+                        <select id="limit-select">
+                            <option value="50">50</option>
+                            <option value="100" selected>100</option>
+                            <option value="500">500</option>
+                            <option value="1000">1000</option>
+                        </select>
+                    </div>
+                    <button id="apply-filters-btn" class="btn">Aplicar Filtros</button>
+                </div>
+                
+                <div class="view-toggle">
+                    <button id="map-view-btn" class="view-btn active">Vista Mapa</button>
+                    <button id="table-view-btn" class="view-btn">Vista Tabla</button>
+                </div>
+            </div>
+            
+            <!-- Contenedor del mapa -->
+            <div id="map-container" class="gps-view-container">
+                <div id="gps-map"></div>
+                <div id="device-info" class="info-panel hidden">
+                    <h3>Información del Dispositivo</h3>
+                    <div id="device-details"></div>
+                </div>
+            </div>
+            
+            <!-- Contenedor de la tabla -->
+            <div id="table-container" class="gps-view-container hidden">
+                <div class="gps-table-wrapper">
+                    <table id="gps-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Dispositivo</th>
+                                <th>Latitud</th>
+                                <th>Longitud</th>
+                                <th>Altitud</th>
+                                <th>Velocidad (km/h)</th>
+                                <th>Satélites</th>
+                                <th>Precisión</th>
+                                <th>Batería (%)</th>
+                                <th>Fecha y Hora</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="gps-data-list">
+                            <!-- Los datos se cargarán aquí dinámicamente -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para ver detalles del punto GPS -->
+    <div id="gps-detail-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h2>Detalles de Ubicación</h2>
+            <div id="point-detail-map" class="detail-map"></div>
+            <div id="point-details" class="detail-info"></div>
+        </div>
+    </div>
+
+    <!-- Agregar Leaflet JS para mapas -->
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="js/gps.js"></script>
+</body>
+</html>

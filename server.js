@@ -28,7 +28,7 @@ const db = mysql.createConnection({
   database: process.env.DB_NAME      // Nombre de la base de datos
 });
 
-// Conectar a la base de datos
+// Conectar a la base de datos y verificar/crear tablas necesarias
 db.connect(err => {
   if (err) {
     console.error('Error al conectar a la base de datos:', err);
@@ -63,7 +63,111 @@ db.connect(err => {
           }
         });
       }
-    });
+  });
+  
+  // Verificar si existe la columna ip_address, si no, crearla
+  db.query(`
+    SELECT COLUMN_NAME 
+    FROM INFORMATION_SCHEMA.COLUMNS 
+    WHERE TABLE_SCHEMA = ? 
+    AND TABLE_NAME = 'users' 
+    AND COLUMN_NAME = 'ip_address'`, 
+    [process.env.DB_NAME], 
+    (err, results) => {
+      if (err) {
+        console.error('Error al verificar columna ip_address:', err);
+        return;
+      }
+      
+      if (results.length === 0) {
+        // La columna no existe, crearla
+        db.query(`
+          ALTER TABLE users 
+          ADD COLUMN ip_address VARCHAR(45) NULL DEFAULT NULL
+        `, (err) => {
+          if (err) {
+            console.error('Error al añadir columna ip_address:', err);
+          } else {
+            console.log('Columna ip_address añadida correctamente');
+          }
+        });
+      }
+  });
+  
+  // Verificar si existe la tabla login_history, si no, crearla
+  db.query(`
+    SELECT table_name 
+    FROM information_schema.tables 
+    WHERE table_schema = ? 
+    AND table_name = 'login_history'`, 
+    [process.env.DB_NAME], 
+    (err, results) => {
+      if (err) {
+        console.error('Error al verificar tabla login_history:', err);
+        return;
+      }
+      
+      if (results.length === 0) {
+        // La tabla no existe, crearla
+        db.query(`
+          CREATE TABLE login_history (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            ip_address VARCHAR(45) NULL,
+            user_agent TEXT NULL,
+            status VARCHAR(20) DEFAULT 'success',
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+          )
+        `, (err) => {
+          if (err) {
+            console.error('Error al crear tabla login_history:', err);
+          } else {
+            console.log('Tabla login_history creada correctamente');
+          }
+        });
+      }
+  });
+  
+  // Verificar si existe la tabla gps_data, si no, crearla
+  db.query(`
+    SELECT table_name 
+    FROM information_schema.tables 
+    WHERE table_schema = ? 
+    AND table_name = 'gps_data'`, 
+    [process.env.DB_NAME], 
+    (err, results) => {
+      if (err) {
+        console.error('Error al verificar tabla gps_data:', err);
+        return;
+      }
+      
+      if (results.length === 0) {
+        // La tabla no existe, crearla
+        db.query(`
+          CREATE TABLE gps_data (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            device_id VARCHAR(50) NOT NULL,
+            latitude DOUBLE NOT NULL,
+            longitude DOUBLE NOT NULL,
+            altitude DOUBLE,
+            speed DOUBLE,
+            satellites INT,
+            hdop DOUBLE,
+            battery DOUBLE,
+            gps_timestamp BIGINT,
+            gps_date BIGINT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          )
+        `, (err) => {
+          if (err) {
+            console.error('Error al crear tabla gps_data:', err);
+          } else {
+            console.log('Tabla gps_data creada correctamente');
+          }
+        });
+      }
+  });
 });
 
 // Middleware para verificar JWT
@@ -81,6 +185,34 @@ const verifyToken = (req, res, next) => {
   } catch (err) {
     return res.status(401).json({ message: 'Token inválido o expirado' });
   }
+};
+
+// Middleware para verificar la clave API (para dispositivos ESP32)
+const verifyApiKey = (req, res, next) => {
+  const apiKey = req.headers['x-api-key'];
+  const expectedApiKey = process.env.ESP32_API_KEY || 'clave_secreta_para_autorizar';
+  
+  if (!apiKey || apiKey !== expectedApiKey) {
+    return res.status(401).json({ message: 'Clave API no válida' });
+  }
+  
+  next();
+};
+
+// Función para obtener IP real del cliente
+const getClientIp = (req) => {
+  // Primero buscamos la IP en los headers de proxy
+  const xForwardedFor = req.headers['x-forwarded-for'];
+  if (xForwardedFor) {
+    // El formato puede ser: client, proxy1, proxy2, ...
+    return xForwardedFor.split(',')[0].trim();
+  }
+  
+  // Otras formas de obtener la IP
+  return req.headers['x-real-ip'] || 
+         req.connection.remoteAddress || 
+         req.socket.remoteAddress || 
+         (req.connection.socket ? req.connection.socket.remoteAddress : null);
 };
 
 // Ruta para verificar si un token es válido
@@ -111,10 +243,13 @@ app.post('/api/register', async (req, res) => {
       // Hash de la contraseña
       const hashedPassword = await bcrypt.hash(password, 10);
       
+      // Obtener la IP del cliente
+      const ipAddress = getClientIp(req);
+      
       // Insertar usuario en la base de datos
       db.query(
-        'INSERT INTO users (nombre, apellido, email, password) VALUES (?, ?, ?, ?)',
-        [nombre, apellido, email, hashedPassword],
+        'INSERT INTO users (nombre, apellido, email, password, ip_address) VALUES (?, ?, ?, ?, ?)',
+        [nombre, apellido, email, hashedPassword, ipAddress],
         (err, result) => {
           if (err) {
             console.error('Error al registrar usuario:', err);
@@ -139,6 +274,10 @@ app.post('/api/login', (req, res) => {
     return res.status(400).json({ message: 'Email y contraseña son obligatorios' });
   }
   
+  // Obtener la IP y user agent
+  const ipAddress = getClientIp(req);
+  const userAgent = req.headers['user-agent'] || 'Unknown';
+  
   db.query('SELECT * FROM users WHERE email = ?', [email], async (err, results) => {
     if (err) {
       console.error('Error en la consulta:', err);
@@ -146,6 +285,8 @@ app.post('/api/login', (req, res) => {
     }
     
     if (results.length === 0) {
+      // Registrar intento fallido si el email existe en la base de datos
+      logFailedLogin(email, ipAddress, userAgent, 'usuario_no_existe');
       return res.status(401).json({ message: 'Credenciales incorrectas' });
     }
     
@@ -155,16 +296,24 @@ app.post('/api/login', (req, res) => {
     const match = await bcrypt.compare(password, user.password);
     
     if (!match) {
+      // Registrar intento fallido
+      logFailedLogin(user.id, ipAddress, userAgent, 'contraseña_incorrecta');
       return res.status(401).json({ message: 'Credenciales incorrectas' });
     }
     
-    // Actualizar último acceso
+    // Actualizar último acceso e IP
     const now = new Date();
-    db.query('UPDATE users SET ultimo_acceso = ? WHERE id = ?', [now, user.id], (updateErr) => {
-      if (updateErr) {
-        console.error('Error al actualizar último acceso:', updateErr);
+    db.query('UPDATE users SET ultimo_acceso = ?, ip_address = ? WHERE id = ?', 
+      [now, ipAddress, user.id], 
+      (updateErr) => {
+        if (updateErr) {
+          console.error('Error al actualizar último acceso e IP:', updateErr);
+        }
       }
-    });
+    );
+    
+    // Registrar inicio de sesión exitoso
+    logSuccessfulLogin(user.id, ipAddress, userAgent);
     
     // Generar token JWT
     const token = jwt.sign(
@@ -186,9 +335,50 @@ app.post('/api/login', (req, res) => {
   });
 });
 
+// Función para registrar inicio de sesión exitoso
+function logSuccessfulLogin(userId, ipAddress, userAgent) {
+  db.query(
+    'INSERT INTO login_history (user_id, ip_address, user_agent, status) VALUES (?, ?, ?, ?)',
+    [userId, ipAddress, userAgent, 'success'],
+    (err) => {
+      if (err) {
+        console.error('Error al registrar inicio de sesión exitoso:', err);
+      }
+    }
+  );
+}
+
+// Función para registrar intento de inicio de sesión fallido
+function logFailedLogin(userId, ipAddress, userAgent, reason) {
+  // Si es un email y no un ID
+  if (isNaN(userId)) {
+    // Solo registrar la IP y el motivo
+    db.query(
+      'INSERT INTO login_history (user_id, ip_address, user_agent, status) VALUES (?, ?, ?, ?)',
+      [0, ipAddress, userAgent, 'failed_' + reason],
+      (err) => {
+        if (err) {
+          console.error('Error al registrar intento fallido de inicio de sesión:', err);
+        }
+      }
+    );
+  } else {
+    // Registrar con el ID de usuario
+    db.query(
+      'INSERT INTO login_history (user_id, ip_address, user_agent, status) VALUES (?, ?, ?, ?)',
+      [userId, ipAddress, userAgent, 'failed_' + reason],
+      (err) => {
+        if (err) {
+          console.error('Error al registrar intento fallido de inicio de sesión:', err);
+        }
+      }
+    );
+  }
+}
+
 // Ruta protegida para obtener todos los usuarios (requiere autenticación)
 app.get('/api/users', verifyToken, (req, res) => {
-  db.query('SELECT id, nombre, apellido, email, fecha_registro, ultimo_acceso FROM users', (err, results) => {
+  db.query('SELECT id, nombre, apellido, email, fecha_registro, ultimo_acceso, ip_address FROM users', (err, results) => {
     if (err) {
       console.error('Error al obtener usuarios:', err);
       return res.status(500).json({ message: 'Error del servidor' });
@@ -196,6 +386,42 @@ app.get('/api/users', verifyToken, (req, res) => {
     
     res.json(results);
   });
+});
+
+// Ruta para obtener el historial de conexiones de un usuario
+app.get('/api/users/:id/login-history', verifyToken, (req, res) => {
+  const userId = req.params.id;
+  
+  // Verificar que el ID sea válido
+  if (!userId || isNaN(userId)) {
+    return res.status(400).json({ message: 'ID de usuario inválido' });
+  }
+  
+  // Si no es el propio usuario y no es admin, denegar acceso
+  if (parseInt(userId) !== req.user.id && req.user.role !== 'admin') {
+    // En un sistema real, tendrías roles. Aquí lo simplificamos
+    return res.status(403).json({ message: 'No tienes permiso para ver este historial' });
+  }
+  
+  // Consultar historial
+  db.query(
+    `SELECT h.id, h.login_time, h.ip_address, h.user_agent, h.status,
+            u.nombre, u.apellido, u.email
+     FROM login_history h
+     JOIN users u ON h.user_id = u.id
+     WHERE h.user_id = ?
+     ORDER BY h.login_time DESC
+     LIMIT 100`,
+    [userId],
+    (err, results) => {
+      if (err) {
+        console.error('Error al obtener historial de conexiones:', err);
+        return res.status(500).json({ message: 'Error del servidor' });
+      }
+      
+      res.json(results);
+    }
+  );
 });
 
 // Eliminar usuario por ID
@@ -355,6 +581,160 @@ app.put('/api/users/:id/password', verifyToken, async (req, res) => {
       console.error('Error al hashear la nueva contraseña:', error);
       return res.status(500).json({ message: 'Error interno del servidor' });
     }
+  });
+});
+
+// ----- RUTAS PARA GPS -----
+
+// Endpoint para recibir datos GPS del ESP32
+app.post('/api/gps', verifyApiKey, (req, res) => {
+  const { 
+    device_id, 
+    latitude, 
+    longitude, 
+    altitude, 
+    speed,
+    satellites,
+    hdop,
+    timestamp,
+    date,
+    battery
+  } = req.body;
+  
+  // Validar datos requeridos
+  if (!device_id || !latitude || !longitude) {
+    return res.status(400).json({ message: 'Faltan campos obligatorios: device_id, latitude, longitude' });
+  }
+  
+  // Validar rangos de latitud y longitud
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+    return res.status(400).json({ message: 'Valores de latitud o longitud fuera de rango' });
+  }
+  
+  // Insertar datos en la base de datos
+  db.query(
+    `INSERT INTO gps_data 
+     (device_id, latitude, longitude, altitude, speed, satellites, hdop, battery, gps_timestamp, gps_date) 
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [device_id, latitude, longitude, altitude, speed, satellites, hdop, battery, timestamp, date],
+    (err, result) => {
+      if (err) {
+        console.error('Error al guardar datos GPS:', err);
+        return res.status(500).json({ message: 'Error al guardar datos GPS' });
+      }
+      
+      console.log(`Datos GPS recibidos de ${device_id}: Lat=${latitude}, Lon=${longitude}`);
+      return res.status(201).json({ 
+        message: 'Datos GPS guardados correctamente',
+        id: result.insertId
+      });
+    }
+  );
+});
+
+// Endpoint para obtener datos GPS (protegido con autenticación JWT)
+app.get('/api/gps', verifyToken, (req, res) => {
+  const limit = parseInt(req.query.limit) || 100; // Limitar el número de registros
+  const device = req.query.device || null; // Filtrar por dispositivo
+  const startDate = req.query.start || null; // Fecha de inicio (YYYY-MM-DD)
+  const endDate = req.query.end || null; // Fecha de fin (YYYY-MM-DD)
+  
+  // Construir la consulta SQL con filtros opcionales
+  let query = 'SELECT * FROM gps_data';
+  const queryParams = [];
+  
+  let whereAdded = false;
+  
+  // Filtro por dispositivo
+  if (device) {
+    query += ' WHERE device_id = ?';
+    queryParams.push(device);
+    whereAdded = true;
+  }
+  
+  // Filtro por fecha de inicio
+  if (startDate) {
+    if (whereAdded) {
+      query += ' AND';
+    } else {
+      query += ' WHERE';
+      whereAdded = true;
+    }
+    query += ' DATE(created_at) >= ?';
+    queryParams.push(startDate);
+  }
+  
+  // Filtro por fecha de fin
+  if (endDate) {
+    if (whereAdded) {
+      query += ' AND';
+    } else {
+      query += ' WHERE';
+    }
+    query += ' DATE(created_at) <= ?';
+    queryParams.push(endDate);
+  }
+  
+  // Ordenar por fecha descendente (más reciente primero)
+  query += ' ORDER BY created_at DESC';
+  
+  // Limitar el número de resultados
+  query += ' LIMIT ?';
+  queryParams.push(limit);
+  
+  // Ejecutar la consulta
+  db.query(query, queryParams, (err, results) => {
+    if (err) {
+      console.error('Error al obtener datos GPS:', err);
+      return res.status(500).json({ message: 'Error al obtener datos GPS' });
+    }
+    
+    res.json(results);
+  });
+});
+
+// Endpoint para obtener el último registro GPS de cada dispositivo
+app.get('/api/gps/latest', verifyToken, (req, res) => {
+  const query = `
+    SELECT g.*
+    FROM gps_data g
+    INNER JOIN (
+      SELECT device_id, MAX(created_at) as max_date
+      FROM gps_data
+      GROUP BY device_id
+    ) m ON g.device_id = m.device_id AND g.created_at = m.max_date
+    ORDER BY g.created_at DESC
+  `;
+  
+  db.query(query, (err, results) => {
+    if (err) {
+      console.error('Error al obtener últimos datos GPS:', err);
+      return res.status(500).json({ message: 'Error del servidor' });
+    }
+    
+    res.json(results);
+  });
+});
+
+// Endpoint para obtener la lista de dispositivos GPS disponibles
+app.get('/api/gps/devices', verifyToken, (req, res) => {
+  const query = `
+    SELECT DISTINCT device_id, 
+           COUNT(*) as total_records,
+           MIN(created_at) as first_record,
+           MAX(created_at) as last_record
+    FROM gps_data
+    GROUP BY device_id
+    ORDER BY last_record DESC
+  `;
+  
+  db.query(query, (err, results) => {
+    if (err) {
+      console.error('Error al obtener dispositivos GPS:', err);
+      return res.status(500).json({ message: 'Error del servidor' });
+    }
+    
+    res.json(results);
   });
 });
 

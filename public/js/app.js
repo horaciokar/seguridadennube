@@ -1,109 +1,5 @@
-// Configuración de la API
-const API_URL = 'https://seguridadenredes.ddns.net/api'; // Cambiado a HTTPS para evitar errores de contenido mixto
-
-// Referencias a elementos del DOM
-const loginTab = document.getElementById('login-tab');
-const registerTab = document.getElementById('register-tab');
-const loginForm = document.getElementById('login-form');
-const registerForm = document.getElementById('register-form');
-const authForms = document.getElementById('auth-forms');
-const userDashboard = document.getElementById('user-dashboard');
-const logoutBtn = document.getElementById('logout-btn');
-const userNameSpan = document.getElementById('user-name');
-const usersList = document.getElementById('users-list');
-const loginMessage = document.getElementById('login-message');
-const registerMessage = document.getElementById('register-message');
-const dashboardMessage = document.getElementById('dashboard-message') || document.createElement('div');
-
-// Referencias a elementos de modales
-const changePasswordBtn = document.getElementById('change-password-btn');
-const passwordModal = document.getElementById('password-modal');
-const changePasswordForm = document.getElementById('change-password-form');
-const passwordModalMessage = document.getElementById('password-modal-message');
-const editUserModal = document.getElementById('edit-user-modal');
-const editUserForm = document.getElementById('edit-user-form');
-const editModalMessage = document.getElementById('edit-modal-message');
-const closeModalBtns = document.querySelectorAll('.close-modal');
-
-// Si no existe el elemento de mensaje en el dashboard, crearlo
-if (!document.getElementById('dashboard-message')) {
-    dashboardMessage.id = 'dashboard-message';
-    dashboardMessage.className = 'message';
-    userDashboard.insertBefore(dashboardMessage, userDashboard.firstChild);
-}
-
-// Asegurarse de que todos los modales estén ocultos al cargar la página
-document.addEventListener('DOMContentLoaded', () => {
-    editUserModal.classList.add('hidden');
-    passwordModal.classList.add('hidden');
-    
-    // Resto del código DOMContentLoaded sigue abajo...
-    const token = localStorage.getItem('token');
-    const user = localStorage.getItem('user');
-    
-    if (token && user) {
-        // Verificar si el token es válido antes de mostrar el dashboard
-        verifyToken(token)
-            .then(isValid => {
-                if (isValid) {
-                    showDashboard();
-                } else {
-                    // Si el token no es válido, cerrar sesión
-                    logout();
-                }
-            })
-            .catch(() => {
-                // En caso de error, cerrar sesión
-                logout();
-            });
-    }
-});
-
-// Cambiar entre pestañas de login y registro
-loginTab.addEventListener('click', () => {
-    loginTab.classList.add('active');
-    registerTab.classList.remove('active');
-    loginForm.classList.remove('hidden');
-    registerForm.classList.add('hidden');
-});
-
-registerTab.addEventListener('click', () => {
-    registerTab.classList.add('active');
-    loginTab.classList.remove('active');
-    registerForm.classList.remove('hidden');
-    loginForm.classList.add('hidden');
-});
-
-// Función para mostrar mensajes
-function showMessage(element, message, isError = false) {
-    element.textContent = message;
-    element.classList.remove('error', 'success');
-    element.classList.add(isError ? 'error' : 'success');
-    
-    // Hacer visible el mensaje
-    element.style.display = 'block';
-    
-    // Ocultar el mensaje después de 5 segundos
-    setTimeout(() => {
-        element.style.display = 'none';
-    }, 5000);
-}
-
-// Función para formatear fechas
-function formatDate(dateString) {
-    if (!dateString) return 'N/A';
-    
-    try {
-        const fecha = new Date(dateString);
-        return `${fecha.getDate().toString().padStart(2, '0')}/${(fecha.getMonth() + 1).toString().padStart(2, '0')}/${fecha.getFullYear()} ${fecha.getHours().toString().padStart(2, '0')}:${fecha.getMinutes().toString().padStart(2, '0')}`;
-    } catch (e) {
-        console.error('Error al formatear fecha:', e);
-        return 'N/A';
-    }
-}
-
-// Función para eliminar un usuario
-async function deleteUser(userId) {
+// Función para mostrar el historial de conexiones de un usuario
+async function showLoginHistory(userId, userName, userEmail) {
     try {
         const token = localStorage.getItem('token');
         
@@ -111,15 +7,19 @@ async function deleteUser(userId) {
             throw new Error('No hay token disponible');
         }
         
-        // Confirmar antes de eliminar
-        if (!confirm('¿Estás seguro de que deseas eliminar este usuario?')) {
-            return;
-        }
+        // Mostrar información del usuario en el modal
+        historyUserName.textContent = userName;
+        historyUserEmail.textContent = userEmail;
         
-        showMessage(dashboardMessage, 'Eliminando usuario...', false);
+        // Limpiar lista actual
+        loginHistoryList.innerHTML = '<tr><td colspan="4" style="text-align:center;">Cargando...</td></tr>';
         
-        const response = await fetch(`${API_URL}/users/${userId}`, {
-            method: 'DELETE',
+        // Mostrar el modal
+        loginHistoryModal.classList.remove('hidden');
+        
+        // Cargar historial
+        const response = await fetch(`${API_URL}/users/${userId}/login-history`, {
+            method: 'GET',
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
@@ -127,41 +27,128 @@ async function deleteUser(userId) {
         });
         
         if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.message || `Error al eliminar usuario: ${response.status}`);
+            throw new Error(`Error al cargar historial: ${response.status}`);
         }
         
         const data = await response.json();
-        showMessage(dashboardMessage, 'Usuario eliminado correctamente', false);
         
-        // Recargar la lista de usuarios
-        loadUsers();
+        // Limpiar mensaje de carga
+        loginHistoryList.innerHTML = '';
+        
+        // Mostrar datos en la tabla
+        if (data.length === 0) {
+            loginHistoryList.innerHTML = '<tr><td colspan="4" style="text-align:center;">No hay registros de conexión</td></tr>';
+        } else {
+            data.forEach(entry => {
+                const row = document.createElement('tr');
+                
+                // Determinar clase CSS para el estado
+                let statusClass = '';
+                let statusText = entry.status || 'N/A';
+                
+                if (statusText === 'success') {
+                    statusClass = 'history-status-success';
+                    statusText = 'Exitoso';
+                } else if (statusText.startsWith('failed')) {
+                    statusClass = 'history-status-failed';
+                    
+                    // Traducir los motivos de fallo
+                    if (statusText === 'failed_contraseña_incorrecta') {
+                        statusText = 'Fallido: Contraseña incorrecta';
+                    } else if (statusText === 'failed_usuario_no_existe') {
+                        statusText = 'Fallido: Usuario no existe';
+                    } else {
+                        statusText = 'Fallido';
+                    }
+                }
+                
+                row.innerHTML = `
+                    <td>${formatDate(entry.login_time)}</td>
+                    <td>${entry.ip_address || 'N/A'}</td>
+                    <td>${entry.user_agent ? entry.user_agent.substring(0, 50) + '...' : 'N/A'}</td>
+                    <td class="${statusClass}">${statusText}</td>
+                `;
+                
+                loginHistoryList.appendChild(row);
+            });
+        }
         
     } catch (error) {
-        console.error('Error al eliminar usuario:', error);
-        showMessage(dashboardMessage, `Error: ${error.message}`, true);
+        console.error('Error:', error);
+        loginHistoryList.innerHTML = `<tr><td colspan="4" style="text-align:center;color:red;">Error: ${error.message}</td></tr>`;
     }
 }
 
-// Función para abrir el modal de edición de usuario
-function openEditModal(user) {
-    document.getElementById('edit-user-id').value = user.id;
-    document.getElementById('edit-nombre').value = user.nombre;
-    document.getElementById('edit-apellido').value = user.apellido;
-    
-    const emailInput = document.getElementById('edit-email');
-    emailInput.value = user.email;
-    emailInput.disabled = true; // Asegurar que esté deshabilitado
-    emailInput.setAttribute('readonly', 'readonly'); // También añadir readonly para mayor seguridad
-    
-    // Resetear mensajes
-    const editModalMessage = document.getElementById('edit-modal-message');
-    if (editModalMessage) {
-        editModalMessage.style.display = 'none';
+// Función para cargar mi historial de conexiones
+async function loadMyLoginHistory() {
+    try {
+        const token = localStorage.getItem('token');
+        const user = JSON.parse(localStorage.getItem('user'));
+        
+        if (!token || !user) {
+            throw new Error('No hay información de sesión disponible');
+        }
+        
+        // Cargar historial
+        const response = await fetch(`${API_URL}/users/${user.id}/login-history`, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Error al cargar historial: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        // Limpiar lista actual
+        myLoginList.innerHTML = '';
+        
+        // Mostrar datos en la tabla
+        if (data.length === 0) {
+            myLoginList.innerHTML = '<tr><td colspan="4" style="text-align:center;">No hay registros de conexión</td></tr>';
+        } else {
+            data.forEach(entry => {
+                const row = document.createElement('tr');
+                
+                // Determinar clase CSS para el estado
+                let statusClass = '';
+                let statusText = entry.status || 'N/A';
+                
+                if (statusText === 'success') {
+                    statusClass = 'history-status-success';
+                    statusText = 'Exitoso';
+                } else if (statusText.startsWith('failed')) {
+                    statusClass = 'history-status-failed';
+                    
+                    // Traducir los motivos de fallo
+                    if (statusText === 'failed_contraseña_incorrecta') {
+                        statusText = 'Fallido: Contraseña incorrecta';
+                    } else if (statusText === 'failed_usuario_no_existe') {
+                        statusText = 'Fallido: Usuario no existe';
+                    } else {
+                        statusText = 'Fallido';
+                    }
+                }
+                
+                row.innerHTML = `
+                    <td>${formatDate(entry.login_time)}</td>
+                    <td>${entry.ip_address || 'N/A'}</td>
+                    <td>${entry.user_agent ? entry.user_agent.substring(0, 50) + '...' : 'N/A'}</td>
+                    <td class="${statusClass}">${statusText}</td>
+                `;
+                
+                myLoginList.appendChild(row);
+            });
+        }
+        
+    } catch (error) {
+        console.error('Error:', error);
+        myLoginList.innerHTML = `<tr><td colspan="4" style="text-align:center;color:red;">Error: ${error.message}</td></tr>`;
     }
-    
-    // Mostrar el modal
-    editUserModal.classList.remove('hidden');
 }
 
 // Función para actualizar datos de usuario
@@ -359,6 +346,10 @@ function showDashboard() {
     // Asegurarse de que los modales estén ocultos
     editUserModal.classList.add('hidden');
     passwordModal.classList.add('hidden');
+    loginHistoryModal.classList.add('hidden');
+    
+    // Asegurarse de que estamos en la pestaña de usuarios
+    usersTab.click();
     
     // Cargar lista de usuarios
     loadUsers();
@@ -408,7 +399,7 @@ async function loadUsers() {
         // Mostrar usuarios en la tabla
         if (users.length === 0) {
             const emptyRow = document.createElement('tr');
-            emptyRow.innerHTML = '<td colspan="7" class="text-center">No hay usuarios registrados</td>';
+            emptyRow.innerHTML = '<td colspan="8" class="text-center">No hay usuarios registrados</td>';
             usersList.appendChild(emptyRow);
         } else {
             // Obtener el usuario actual
@@ -429,10 +420,12 @@ async function loadUsers() {
                     <td>${user.email || 'N/A'}</td>
                     <td>${fechaRegistro}</td>
                     <td>${ultimoAcceso}</td>
+                    <td>${user.ip_address || 'N/A'}</td>
                     <td class="action-column">
                         ${currentUser.id === user.id ? 
                             '<span class="current-user-badge">Tú</span>' : 
                             `<button class="btn-edit" data-id="${user.id}">Editar</button>
+                             <button class="btn-history" data-id="${user.id}" data-name="${user.nombre} ${user.apellido}" data-email="${user.email}">Historial</button>
                              <button class="btn-delete" data-id="${user.id}">Eliminar</button>`}
                     </td>
                 `;
@@ -460,6 +453,17 @@ async function loadUsers() {
                             if (userToEdit) {
                                 openEditModal(userToEdit);
                             }
+                        });
+                    }
+                    
+                    // Botón historial
+                    const historyButton = row.querySelector('.btn-history');
+                    if (historyButton) {
+                        historyButton.addEventListener('click', function() {
+                            const userId = this.getAttribute('data-id');
+                            const userName = this.getAttribute('data-name');
+                            const userEmail = this.getAttribute('data-email');
+                            showLoginHistory(userId, userName, userEmail);
                         });
                     }
                 }
@@ -546,6 +550,7 @@ function logout() {
     // Asegurarse de que los modales estén ocultos
     editUserModal.classList.add('hidden');
     passwordModal.classList.add('hidden');
+    loginHistoryModal.classList.add('hidden');
     
     // Limpiar formularios
     loginForm.reset();
@@ -570,6 +575,7 @@ closeModalBtns.forEach(btn => {
     btn.addEventListener('click', () => {
         passwordModal.classList.add('hidden');
         editUserModal.classList.add('hidden');
+        loginHistoryModal.classList.add('hidden');
     });
 });
 
@@ -581,13 +587,25 @@ window.addEventListener('click', (e) => {
     if (e.target === editUserModal) {
         editUserModal.classList.add('hidden');
     }
+    if (e.target === loginHistoryModal) {
+        loginHistoryModal.classList.add('hidden');
+    }
 });
+
+// Agregar botón para ir a GPS
+const dashboardHeader = document.querySelector('.header-buttons');
+if (dashboardHeader && document.getElementById('gps-dashboard-btn')) {
+    document.getElementById('gps-dashboard-btn').addEventListener('click', () => {
+        window.location.href = 'gps.html';
+    });
+}
 
 // Verificar si el usuario ya tiene sesión iniciada al cargar la página
 document.addEventListener('DOMContentLoaded', () => {
     // Asegurar que los modales estén ocultos al inicio
     editUserModal.classList.add('hidden');
     passwordModal.classList.add('hidden');
+    loginHistoryModal.classList.add('hidden');
     
     const token = localStorage.getItem('token');
     const user = localStorage.getItem('user');

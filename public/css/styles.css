@@ -226,7 +226,7 @@ body {
     background-color: #d32f2f; /* Rojo más oscuro */
 }
 
-.btn-edit {
+.btn-edit, .btn-history {
     background-color: #75aadb; /* Celeste */
     color: white;
     border: none;
@@ -238,13 +238,13 @@ body {
     margin-right: 5px;
 }
 
-.btn-edit:hover {
+.btn-edit:hover, .btn-history:hover {
     background-color: #5d90c0; /* Celeste más oscuro */
 }
 
 .action-column {
     text-align: center;
-    min-width: 150px; /* Espacio para varios botones */
+    min-width: 180px; /* Espacio para varios botones */
 }
 
 /* Estilo para marcar al usuario actual */
@@ -352,3 +352,135 @@ input:disabled, input[readonly] {
     cursor: not-allowed;
     border: 1px solid #ddd;
 }
+
+/* Estilos para el historial de conexiones */
+.history-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+.history-table th,
+.history-table td {
+    padding: 8px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+    font-size: 14px;
+}
+
+.history-table th {
+    background-color: #75aadb;
+    color: white;
+}
+
+.history-table tr:nth-child(even) {
+    background-color: #f0f8ff;
+}
+
+.history-table tr:hover {
+    background-color: #e1f5fe;
+}
+
+.history-status-success {
+    color: #2e7d32;
+    font-weight: bold;
+}
+
+.history-status-failed {
+    color: #c62828;
+    font-weight: bold;
+}
+
+/* Estilos para modales más grandes */
+.modal-lg {
+    width: 800px;
+    max-width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #75aadb;
+}
+
+.modal-header h2 {
+    margin: 0;
+    padding: 0;
+    border: none;
+}
+
+.modal-body {
+    max-height: 60vh;
+    overflow-y: auto;
+    padding-right: 5px;
+}
+
+.modal-body::-webkit-scrollbar {
+    width: 6px;
+}
+
+.modal-body::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+.modal-body::-webkit-scrollbar-thumb {
+    background: #75aadb;
+    border-radius: 3px;
+}
+
+.modal-body::-webkit-scrollbar-thumb:hover {
+    background: #5d90c0;
+}
+
+/* Estilos para pestañas en el dashboard */
+.dashboard-tabs {
+    display: flex;
+    margin-bottom: 20px;
+    border-bottom: 1px solid #ddd;
+}
+
+.dashboard-tab {
+    padding: 10px 20px;
+    background: none;
+    border: none;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    color: #555;
+}
+
+.dashboard-tab:hover {
+    color: #2a5caa;
+}
+
+.dashboard-tab.active {
+    color: #2a5caa;
+    font-weight: bold;
+}
+
+.dashboard-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background-color: #75aadb;
+}
+
+.dashboard-content {
+    display: none;
+}
+
+.dashboard-content.active {
+    display: block;
+}
+
+/* Estilos específicos para la página de GPS - importación */
+@import url('gps-styles.css');

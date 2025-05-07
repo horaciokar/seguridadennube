@@ -56,8 +56,9 @@
         <!-- Panel de Usuarios (visible después de iniciar sesión) -->
         <div id="user-dashboard" class="dashboard hidden">
             <div class="header">
-                <h1>Panel de Usuarios</h1>
+                <h1>Panel de Control</h1>
                 <div class="header-buttons">
+                    <button id="gps-dashboard-btn" class="btn btn-secondary">Panel GPS</button>
                     <button id="change-password-btn" class="btn btn-secondary">Cambiar Contraseña</button>
                     <button id="logout-btn" class="btn btn-danger">Cerrar Sesión</button>
                 </div>
@@ -69,24 +70,54 @@
                 <h2>Bienvenido, <span id="user-name"></span>!</h2>
             </div>
             
-            <div class="user-list-container">
-                <h3>Lista de Usuarios Registrados</h3>
-                <table id="users-table">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Nombre</th>
-                            <th>Apellido</th>
-                            <th>Email</th>
-                            <th>Fecha Registro</th>
-                            <th>Último Acceso</th>
-                            <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody id="users-list">
-                        <!-- Los usuarios se cargarán aquí dinámicamente -->
-                    </tbody>
-                </table>
+            <!-- Pestañas del Dashboard -->
+            <div class="dashboard-tabs">
+                <button id="users-tab" class="dashboard-tab active">Usuarios</button>
+                <button id="my-login-tab" class="dashboard-tab">Mi Historial de Acceso</button>
+            </div>
+            
+            <!-- Contenido de Usuarios -->
+            <div id="users-content" class="dashboard-content active">
+                <div class="user-list-container">
+                    <h3>Lista de Usuarios Registrados</h3>
+                    <table id="users-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Nombre</th>
+                                <th>Apellido</th>
+                                <th>Email</th>
+                                <th>Fecha Registro</th>
+                                <th>Último Acceso</th>
+                                <th>Dirección IP</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-list">
+                            <!-- Los usuarios se cargarán aquí dinámicamente -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Contenido de Mi Historial -->
+            <div id="my-login-content" class="dashboard-content">
+                <div class="user-list-container">
+                    <h3>Mi Historial de Acceso</h3>
+                    <table id="my-login-table" class="history-table">
+                        <thead>
+                            <tr>
+                                <th>Fecha y Hora</th>
+                                <th>Dirección IP</th>
+                                <th>Navegador/Dispositivo</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody id="my-login-list">
+                            <!-- El historial se cargará aquí dinámicamente -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
         
@@ -136,6 +167,35 @@
                     <button type="submit" class="btn">Guardar Cambios</button>
                     <div id="edit-modal-message" class="message"></div>
                 </form>
+            </div>
+        </div>
+        
+        <!-- Modal para historial de conexiones -->
+        <div id="login-history-modal" class="modal hidden">
+            <div class="modal-content modal-lg">
+                <span class="close-modal">&times;</span>
+                <div class="modal-header">
+                    <h2>Historial de Conexiones</h2>
+                </div>
+                <div class="modal-body">
+                    <div class="user-info">
+                        <p><strong>Usuario:</strong> <span id="history-user-name"></span></p>
+                        <p><strong>Email:</strong> <span id="history-user-email"></span></p>
+                    </div>
+                    <table class="history-table">
+                        <thead>
+                            <tr>
+                                <th>Fecha y Hora</th>
+                                <th>Dirección IP</th>
+                                <th>Navegador/Dispositivo</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody id="login-history-list">
+                            <!-- El historial se cargará aquí dinámicamente -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
