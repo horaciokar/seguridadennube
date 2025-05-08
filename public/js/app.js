@@ -74,6 +74,18 @@ document.addEventListener('DOMContentLoaded', () => {
             .then(isValid => {
                 if (isValid) {
                     showDashboard();
+                    
+                    // AÑADIDO: Asegurarse de que el botón GPS tenga un event listener
+                    const gpsButton = document.getElementById('gps-dashboard-btn');
+                    if (gpsButton) {
+                        console.log('Botón GPS encontrado, añadiendo event listener');
+                        gpsButton.addEventListener('click', function(e) {
+                            console.log('GPS button clicked from DOMContentLoaded');
+                            window.location.href = 'gps.html';
+                        });
+                    } else {
+                        console.log('Botón GPS no encontrado en DOMContentLoaded');
+                    }
                 } else {
                     // Si el token no es válido, cerrar sesión
                     logout();
@@ -650,26 +662,35 @@ function showDashboard() {
     // Cargar lista de usuarios
     loadUsers();
     
-    // Agregar botón para ir a GPS
-    const dashboardHeader = document.querySelector('.header-buttons');
-    if (dashboardHeader && !document.getElementById('gps-dashboard-btn')) {
-        const gpsButton = document.createElement('button');
-        gpsButton.id = 'gps-dashboard-btn';
-        gpsButton.className = 'btn btn-secondary';
-        gpsButton.textContent = 'Panel GPS';
-        gpsButton.style.marginRight = '10px';
+    // Obtener referencia al botón GPS
+    const gpsButton = document.getElementById('gps-dashboard-btn');
+    
+    // Solo crear el botón si no existe
+    if (!gpsButton) {
+        console.log('Botón GPS no encontrado, creándolo');
+        const dashboardHeader = document.querySelector('.header-buttons');
         
-        // Insertar antes del botón de cambiar contraseña
-        if (changePasswordBtn) {
-            dashboardHeader.insertBefore(gpsButton, changePasswordBtn);
-        } else {
-            dashboardHeader.insertBefore(gpsButton, dashboardHeader.firstChild);
+        if (dashboardHeader) {
+            const newGpsButton = document.createElement('a');
+            newGpsButton.id = 'gps-dashboard-btn';
+            newGpsButton.className = 'btn btn-secondary';
+            newGpsButton.textContent = 'Panel GPS';
+            newGpsButton.style.marginRight = '10px';
+            newGpsButton.href = 'gps.html';
+            
+            // Insertar antes del botón de cambiar contraseña
+            if (changePasswordBtn) {
+                dashboardHeader.insertBefore(newGpsButton, changePasswordBtn);
+            } else {
+                dashboardHeader.insertBefore(newGpsButton, dashboardHeader.firstChild);
+            }
+            
+            console.log('Botón GPS creado y añadido al DOM');
         }
-        
-        // Agregar event listener
-        gpsButton.addEventListener('click', () => {
-            window.location.href = 'gps.html';
-        });
+    } else {
+        console.log('Botón GPS ya existe en el DOM');
+        // Asegurarse de que el botón tenga un href correcto
+        gpsButton.href = 'gps.html';
     }
 }
 
@@ -964,29 +985,19 @@ window.addEventListener('click', (e) => {
     }
 });
 
-// Agregar botón para ir a GPS si existe (puede ya estar creado por showDashboard)
-const dashboardHeader = document.querySelector('.header-buttons');
-if (dashboardHeader && !document.getElementById('gps-dashboard-btn')) {
-    const gpsButton = document.createElement('button');
-    gpsButton.id = 'gps-dashboard-btn';
-    gpsButton.className = 'btn btn-secondary';
-    gpsButton.textContent = 'Panel GPS';
-    gpsButton.style.marginRight = '10px';
-    
-    // Intentar insertar en la posición adecuada
-    if (changePasswordBtn) {
-        dashboardHeader.insertBefore(gpsButton, changePasswordBtn);
-    } else if (logoutBtn) {
-        dashboardHeader.insertBefore(gpsButton, logoutBtn);
-    } else {
-        dashboardHeader.appendChild(gpsButton);
+// Agregar delegación de eventos para el botón de GPS
+document.addEventListener('click', function(event) {
+    // Verificar si el clic fue en el botón GPS o alguno de sus elementos internos
+    let target = event.target;
+    while (target != null) {
+        if (target.id === 'gps-dashboard-btn') {
+            console.log('Botón GPS clickeado a través de delegación');
+            window.location.href = 'gps.html';
+            break;
+        }
+        target = target.parentElement;
     }
-    
-    // Agregar event listener
-    gpsButton.addEventListener('click', () => {
-        window.location.href = 'gps.html';
-    });
-}
+});
 
 // Verificar si el usuario ya tiene sesión iniciada al cargar la página
 document.addEventListener('DOMContentLoaded', () => {
