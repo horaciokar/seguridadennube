@@ -1,5 +1,5 @@
 const express = require('express');
-const mysql = require('mysql2');
+const mysql = require('mysql2/promise'); // Cambiado a mysql2/promise para manejar conexiones de manera asíncrona
 const bcrypt = require('bcrypt');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -9,180 +9,210 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 
+// Configuración de logger
+const winston = require('winston');
+const logger = winston.createLogger({
+  level: 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.printf(({ level, message, timestamp }) => {
+      return `${timestamp} ${level}: ${message}`;
+    })
+  ),
+  transports: [
+    new winston.transports.Console(),
+    new winston.transports.File({ filename: 'error.log', level: 'error' }),
+    new winston.transports.File({ filename: 'combined.log' })
+  ]
+});
+
 const app = express();
 const port = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors({
-  origin: 'https://seguridadenredes.ddns.net', // Dominio principal de tu aplicación
+  origin: process.env.CORS_ORIGIN || 'https://seguridadenredes.ddns.net',
   credentials: true
 }));
 app.use(bodyParser.json());
 app.use(express.static('public'));
 
-// Configuración de la conexión a la base de datos
-const db = mysql.createConnection({
-  host: process.env.DB_HOST,         // Endpoint de tu instancia RDS
-  user: process.env.DB_USER,         // Usuario de la base de datos
-  password: process.env.DB_PASSWORD, // Contraseña de la base de datos
-  database: process.env.DB_NAME      // Nombre de la base de datos
+// Middleware de registro de solicitudes
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    logger.info(`${req.method} ${req.originalUrl} ${res.statusCode} - ${duration}ms`);
+  });
+  next();
 });
 
-// Conectar a la base de datos y verificar/crear tablas necesarias
-db.connect(err => {
-  if (err) {
-    console.error('Error al conectar a la base de datos:', err);
-    return;
+// Middleware para manejar errores de JSON malformado
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    logger.error(`JSON malformado: ${err.message}`);
+    return res.status(400).json({ message: 'JSON malformado en la solicitud' });
   }
-  console.log('Conexión exitosa a la base de datos MySQL');
-  
-  // Verificar si existe la columna ultimo_acceso, si no, crearla
-  db.query(`
-    SELECT COLUMN_NAME 
-    FROM INFORMATION_SCHEMA.COLUMNS 
-    WHERE TABLE_SCHEMA = ? 
-    AND TABLE_NAME = 'users' 
-    AND COLUMN_NAME = 'ultimo_acceso'`, 
-    [process.env.DB_NAME], 
-    (err, results) => {
-      if (err) {
-        console.error('Error al verificar columnas:', err);
-        return;
-      }
-      
-      if (results.length === 0) {
-        // La columna no existe, crearla
-        db.query(`
-          ALTER TABLE users 
-          ADD COLUMN ultimo_acceso TIMESTAMP NULL DEFAULT NULL
-        `, (err) => {
-          if (err) {
-            console.error('Error al añadir columna ultimo_acceso:', err);
-          } else {
-            console.log('Columna ultimo_acceso añadida correctamente');
-          }
-        });
-      }
-  });
-  
-  // Verificar si existe la columna ip_address, si no, crearla
-  db.query(`
-    SELECT COLUMN_NAME 
-    FROM INFORMATION_SCHEMA.COLUMNS 
-    WHERE TABLE_SCHEMA = ? 
-    AND TABLE_NAME = 'users' 
-    AND COLUMN_NAME = 'ip_address'`, 
-    [process.env.DB_NAME], 
-    (err, results) => {
-      if (err) {
-        console.error('Error al verificar columna ip_address:', err);
-        return;
-      }
-      
-      if (results.length === 0) {
-        // La columna no existe, crearla
-        db.query(`
-          ALTER TABLE users 
-          ADD COLUMN ip_address VARCHAR(45) NULL DEFAULT NULL
-        `, (err) => {
-          if (err) {
-            console.error('Error al añadir columna ip_address:', err);
-          } else {
-            console.log('Columna ip_address añadida correctamente');
-          }
-        });
-      }
-  });
-  
-  // Verificar si existe la tabla login_history, si no, crearla
-  db.query(`
-    SELECT table_name 
-    FROM information_schema.tables 
-    WHERE table_schema = ? 
-    AND table_name = 'login_history'`, 
-    [process.env.DB_NAME], 
-    (err, results) => {
-      if (err) {
-        console.error('Error al verificar tabla login_history:', err);
-        return;
-      }
-      
-      if (results.length === 0) {
-        // La tabla no existe, crearla
-        db.query(`
-          CREATE TABLE login_history (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            user_id INT NOT NULL,
-            login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            ip_address VARCHAR(45) NULL,
-            user_agent TEXT NULL,
-            status VARCHAR(20) DEFAULT 'success',
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-          )
-        `, (err) => {
-          if (err) {
-            console.error('Error al crear tabla login_history:', err);
-          } else {
-            console.log('Tabla login_history creada correctamente');
-          }
-        });
-      }
-  });
-  
-  // Verificar si existe la tabla gps_data, si no, crearla
-  db.query(`
-    SELECT table_name 
-    FROM information_schema.tables 
-    WHERE table_schema = ? 
-    AND table_name = 'gps_data'`, 
-    [process.env.DB_NAME], 
-    (err, results) => {
-      if (err) {
-        console.error('Error al verificar tabla gps_data:', err);
-        return;
-      }
-      
-      if (results.length === 0) {
-        // La tabla no existe, crearla
-        db.query(`
-          CREATE TABLE gps_data (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            device_id VARCHAR(50) NOT NULL,
-            latitude DOUBLE NOT NULL,
-            longitude DOUBLE NOT NULL,
-            altitude DOUBLE,
-            speed DOUBLE,
-            satellites INT,
-            hdop DOUBLE,
-            battery DOUBLE,
-            gps_timestamp BIGINT,
-            gps_date BIGINT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-          )
-        `, (err) => {
-          if (err) {
-            console.error('Error al crear tabla gps_data:', err);
-          } else {
-            console.log('Tabla gps_data creada correctamente');
-          }
-        });
-      }
-  });
+  next(err);
 });
+
+// Pool de conexiones a la base de datos para mejor manejo de recursos
+let pool;
+
+async function initializeDatabase() {
+  try {
+    pool = mysql.createPool({
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+      waitForConnections: true,
+      connectionLimit: 10,  // Limitar número de conexiones
+      queueLimit: 0,
+      connectTimeout: 10000, // 10 segundos de timeout
+      enableKeepAlive: true,
+      keepAliveInitialDelay: 10000 // 10 segundos
+    });
+
+    logger.info('Pool de conexiones a la base de datos inicializado');
+    
+    // Verificar la conexión
+    const connection = await pool.getConnection();
+    logger.info('Conexión a la base de datos establecida correctamente');
+    connection.release();
+    
+    // Verificar y crear tablas/columnas
+    await checkAndCreateDatabaseStructure();
+  } catch (err) {
+    logger.error(`Error inicializando la base de datos: ${err.message}`);
+    // Reintento en 5 segundos
+    setTimeout(initializeDatabase, 5000);
+  }
+}
+
+async function checkAndCreateDatabaseStructure() {
+  const connection = await pool.getConnection();
+  try {
+    // Comprobar y añadir columna ultimo_acceso
+    const [ultimoAccesoColumns] = await connection.query(
+      `SELECT COLUMN_NAME 
+       FROM INFORMATION_SCHEMA.COLUMNS 
+       WHERE TABLE_SCHEMA = ? 
+       AND TABLE_NAME = 'users' 
+       AND COLUMN_NAME = 'ultimo_acceso'`,
+      [process.env.DB_NAME]
+    );
+
+    if (ultimoAccesoColumns.length === 0) {
+      logger.info('Añadiendo columna ultimo_acceso a la tabla users');
+      await connection.query(`
+        ALTER TABLE users 
+        ADD COLUMN ultimo_acceso TIMESTAMP NULL DEFAULT NULL
+      `);
+    }
+
+    // Comprobar y añadir columna ip_address
+    const [ipAddressColumns] = await connection.query(
+      `SELECT COLUMN_NAME 
+       FROM INFORMATION_SCHEMA.COLUMNS 
+       WHERE TABLE_SCHEMA = ? 
+       AND TABLE_NAME = 'users' 
+       AND COLUMN_NAME = 'ip_address'`,
+      [process.env.DB_NAME]
+    );
+
+    if (ipAddressColumns.length === 0) {
+      logger.info('Añadiendo columna ip_address a la tabla users');
+      await connection.query(`
+        ALTER TABLE users 
+        ADD COLUMN ip_address VARCHAR(45) NULL DEFAULT NULL
+      `);
+    }
+
+    // Comprobar y crear tabla login_history
+    const [loginHistoryTable] = await connection.query(
+      `SELECT table_name 
+       FROM information_schema.tables 
+       WHERE table_schema = ? 
+       AND table_name = 'login_history'`,
+      [process.env.DB_NAME]
+    );
+
+    if (loginHistoryTable.length === 0) {
+      logger.info('Creando tabla login_history');
+      await connection.query(`
+        CREATE TABLE login_history (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          user_id INT NOT NULL,
+          login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          ip_address VARCHAR(45) NULL,
+          user_agent TEXT NULL,
+          status VARCHAR(20) DEFAULT 'success',
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+      `);
+    }
+
+    // Comprobar y crear tabla gps_data
+    const [gpsDataTable] = await connection.query(
+      `SELECT table_name 
+       FROM information_schema.tables 
+       WHERE table_schema = ? 
+       AND table_name = 'gps_data'`,
+      [process.env.DB_NAME]
+    );
+
+    if (gpsDataTable.length === 0) {
+      logger.info('Creando tabla gps_data');
+      await connection.query(`
+        CREATE TABLE gps_data (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          device_id VARCHAR(50) NOT NULL,
+          latitude DOUBLE NOT NULL,
+          longitude DOUBLE NOT NULL,
+          altitude DOUBLE,
+          speed DOUBLE,
+          satellites INT,
+          hdop DOUBLE,
+          battery DOUBLE,
+          gps_timestamp BIGINT,
+          gps_date BIGINT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_device_id (device_id),
+          INDEX idx_created_at (created_at)
+        )
+      `);
+    }
+
+    logger.info('Estructura de la base de datos verificada y actualizada');
+  } catch (err) {
+    logger.error(`Error verificando estructura de la base de datos: ${err.message}`);
+    throw err;
+  } finally {
+    connection.release();
+  }
+}
 
 // Middleware para verificar JWT
 const verifyToken = (req, res, next) => {
-  const token = req.headers['authorization'];
+  const authHeader = req.headers['authorization'];
   
-  if (!token) {
+  if (!authHeader) {
     return res.status(403).json({ message: 'No se proporcionó token de acceso' });
   }
   
+  const token = authHeader.split(' ')[1];
+  
+  if (!token) {
+    return res.status(403).json({ message: 'Formato de token inválido' });
+  }
+  
   try {
-    const decoded = jwt.verify(token.split(' ')[1], process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded;
     next();
   } catch (err) {
+    logger.error(`Error en verificación de token: ${err.message}`);
     return res.status(401).json({ message: 'Token inválido o expirado' });
   }
 };
@@ -190,9 +220,10 @@ const verifyToken = (req, res, next) => {
 // Middleware para verificar la clave API (para dispositivos ESP32)
 const verifyApiKey = (req, res, next) => {
   const apiKey = req.headers['x-api-key'];
-  const expectedApiKey = process.env.ESP32_API_KEY || '1234567890Abc#';
+  const expectedApiKey = process.env.ESP32_API_KEY || 'clave_secreta_para_autorizar';
   
   if (!apiKey || apiKey !== expectedApiKey) {
+    logger.warn(`Intento de acceso con API key inválida: ${apiKey}`);
     return res.status(401).json({ message: 'Clave API no válida' });
   }
   
@@ -201,14 +232,11 @@ const verifyApiKey = (req, res, next) => {
 
 // Función para obtener IP real del cliente
 const getClientIp = (req) => {
-  // Primero buscamos la IP en los headers de proxy
   const xForwardedFor = req.headers['x-forwarded-for'];
   if (xForwardedFor) {
-    // El formato puede ser: client, proxy1, proxy2, ...
     return xForwardedFor.split(',')[0].trim();
   }
   
-  // Otras formas de obtener la IP
   return req.headers['x-real-ip'] || 
          req.connection.remoteAddress || 
          req.socket.remoteAddress || 
@@ -228,46 +256,53 @@ app.post('/api/register', async (req, res) => {
     return res.status(400).json({ message: 'Todos los campos son obligatorios' });
   }
   
+  // Validar email
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return res.status(400).json({ message: 'Email inválido' });
+  }
+  
+  // Validar contraseña
+  if (password.length < 8) {
+    return res.status(400).json({ message: 'La contraseña debe tener al menos 8 caracteres' });
+  }
+
+  const connection = await pool.getConnection();
   try {
     // Verificar si el email ya existe
-    db.query('SELECT * FROM users WHERE email = ?', [email], async (err, results) => {
-      if (err) {
-        console.error('Error en la consulta:', err);
-        return res.status(500).json({ message: 'Error del servidor' });
-      }
-      
-      if (results.length > 0) {
-        return res.status(400).json({ message: 'El email ya está registrado' });
-      }
-      
-      // Hash de la contraseña
-      const hashedPassword = await bcrypt.hash(password, 10);
-      
-      // Obtener la IP del cliente
-      const ipAddress = getClientIp(req);
-      
-      // Insertar usuario en la base de datos
-      db.query(
-        'INSERT INTO users (nombre, apellido, email, password, ip_address) VALUES (?, ?, ?, ?, ?)',
-        [nombre, apellido, email, hashedPassword, ipAddress],
-        (err, result) => {
-          if (err) {
-            console.error('Error al registrar usuario:', err);
-            return res.status(500).json({ message: 'Error al registrar usuario' });
-          }
-          
-          return res.status(201).json({ message: 'Usuario registrado exitosamente' });
-        }
-      );
-    });
-  } catch (error) {
-    console.error('Error en el registro:', error);
-    res.status(500).json({ message: 'Error del servidor' });
+    const [existingUsers] = await connection.query(
+      'SELECT * FROM users WHERE email = ?', 
+      [email]
+    );
+    
+    if (existingUsers.length > 0) {
+      return res.status(400).json({ message: 'El email ya está registrado' });
+    }
+    
+    // Hash de la contraseña
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    // Obtener la IP del cliente
+    const ipAddress = getClientIp(req);
+    
+    // Insertar usuario en la base de datos
+    const [result] = await connection.query(
+      'INSERT INTO users (nombre, apellido, email, password, ip_address) VALUES (?, ?, ?, ?, ?)',
+      [nombre, apellido, email, hashedPassword, ipAddress]
+    );
+    
+    logger.info(`Usuario registrado con ID: ${result.insertId}`);
+    return res.status(201).json({ message: 'Usuario registrado exitosamente' });
+  } catch (err) {
+    logger.error(`Error registrando usuario: ${err.message}`);
+    return res.status(500).json({ message: 'Error del servidor al registrar usuario' });
+  } finally {
+    connection.release();
   }
 });
 
 // Ruta para iniciar sesión
-app.post('/api/login', (req, res) => {
+app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
   
   if (!email || !password) {
@@ -278,49 +313,48 @@ app.post('/api/login', (req, res) => {
   const ipAddress = getClientIp(req);
   const userAgent = req.headers['user-agent'] || 'Unknown';
   
-  db.query('SELECT * FROM users WHERE email = ?', [email], async (err, results) => {
-    if (err) {
-      console.error('Error en la consulta:', err);
-      return res.status(500).json({ message: 'Error del servidor' });
-    }
+  const connection = await pool.getConnection();
+  try {
+    const [users] = await connection.query(
+      'SELECT * FROM users WHERE email = ?', 
+      [email]
+    );
     
-    if (results.length === 0) {
-      // Registrar intento fallido si el email existe en la base de datos
-      logFailedLogin(email, ipAddress, userAgent, 'usuario_no_existe');
+    if (users.length === 0) {
+      // Registrar intento fallido
+      await logFailedLogin(connection, 0, ipAddress, userAgent, 'usuario_no_existe');
       return res.status(401).json({ message: 'Credenciales incorrectas' });
     }
     
-    const user = results[0];
+    const user = users[0];
     
     // Verificar contraseña
     const match = await bcrypt.compare(password, user.password);
     
     if (!match) {
       // Registrar intento fallido
-      logFailedLogin(user.id, ipAddress, userAgent, 'contraseña_incorrecta');
+      await logFailedLogin(connection, user.id, ipAddress, userAgent, 'contraseña_incorrecta');
       return res.status(401).json({ message: 'Credenciales incorrectas' });
     }
     
     // Actualizar último acceso e IP
     const now = new Date();
-    db.query('UPDATE users SET ultimo_acceso = ?, ip_address = ? WHERE id = ?', 
-      [now, ipAddress, user.id], 
-      (updateErr) => {
-        if (updateErr) {
-          console.error('Error al actualizar último acceso e IP:', updateErr);
-        }
-      }
+    await connection.query(
+      'UPDATE users SET ultimo_acceso = ?, ip_address = ? WHERE id = ?', 
+      [now, ipAddress, user.id]
     );
     
     // Registrar inicio de sesión exitoso
-    logSuccessfulLogin(user.id, ipAddress, userAgent);
+    await logSuccessfulLogin(connection, user.id, ipAddress, userAgent);
     
     // Generar token JWT
     const token = jwt.sign(
       { id: user.id, email: user.email },
       process.env.JWT_SECRET,
-      { expiresIn: '1h' }
+      { expiresIn: '24h' }  // Aumentado a 24 horas
     );
+    
+    logger.info(`Inicio de sesión exitoso para usuario ${user.id} (${user.email})`);
     
     res.json({
       message: 'Inicio de sesión exitoso',
@@ -332,64 +366,57 @@ app.post('/api/login', (req, res) => {
         email: user.email
       }
     });
-  });
+  } catch (err) {
+    logger.error(`Error en inicio de sesión: ${err.message}`);
+    return res.status(500).json({ message: 'Error del servidor durante inicio de sesión' });
+  } finally {
+    connection.release();
+  }
 });
 
 // Función para registrar inicio de sesión exitoso
-function logSuccessfulLogin(userId, ipAddress, userAgent) {
-  db.query(
-    'INSERT INTO login_history (user_id, ip_address, user_agent, status) VALUES (?, ?, ?, ?)',
-    [userId, ipAddress, userAgent, 'success'],
-    (err) => {
-      if (err) {
-        console.error('Error al registrar inicio de sesión exitoso:', err);
-      }
-    }
-  );
+async function logSuccessfulLogin(connection, userId, ipAddress, userAgent) {
+  try {
+    await connection.query(
+      'INSERT INTO login_history (user_id, ip_address, user_agent, status) VALUES (?, ?, ?, ?)',
+      [userId, ipAddress, userAgent, 'success']
+    );
+  } catch (err) {
+    logger.error(`Error al registrar inicio de sesión exitoso: ${err.message}`);
+  }
 }
 
 // Función para registrar intento de inicio de sesión fallido
-function logFailedLogin(userId, ipAddress, userAgent, reason) {
-  // Si es un email y no un ID
-  if (isNaN(userId)) {
-    // Solo registrar la IP y el motivo
-    db.query(
+async function logFailedLogin(connection, userId, ipAddress, userAgent, reason) {
+  try {
+    await connection.query(
       'INSERT INTO login_history (user_id, ip_address, user_agent, status) VALUES (?, ?, ?, ?)',
-      [0, ipAddress, userAgent, 'failed_' + reason],
-      (err) => {
-        if (err) {
-          console.error('Error al registrar intento fallido de inicio de sesión:', err);
-        }
-      }
+      [userId, ipAddress, userAgent, 'failed_' + reason]
     );
-  } else {
-    // Registrar con el ID de usuario
-    db.query(
-      'INSERT INTO login_history (user_id, ip_address, user_agent, status) VALUES (?, ?, ?, ?)',
-      [userId, ipAddress, userAgent, 'failed_' + reason],
-      (err) => {
-        if (err) {
-          console.error('Error al registrar intento fallido de inicio de sesión:', err);
-        }
-      }
-    );
+  } catch (err) {
+    logger.error(`Error al registrar intento fallido de inicio de sesión: ${err.message}`);
   }
 }
 
 // Ruta protegida para obtener todos los usuarios (requiere autenticación)
-app.get('/api/users', verifyToken, (req, res) => {
-  db.query('SELECT id, nombre, apellido, email, fecha_registro, ultimo_acceso, ip_address FROM users', (err, results) => {
-    if (err) {
-      console.error('Error al obtener usuarios:', err);
-      return res.status(500).json({ message: 'Error del servidor' });
-    }
+app.get('/api/users', verifyToken, async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    const [users] = await connection.query(
+      'SELECT id, nombre, apellido, email, fecha_registro, ultimo_acceso, ip_address FROM users'
+    );
     
-    res.json(results);
-  });
+    res.json(users);
+  } catch (err) {
+    logger.error(`Error al obtener usuarios: ${err.message}`);
+    return res.status(500).json({ message: 'Error del servidor al obtener usuarios' });
+  } finally {
+    connection.release();
+  }
 });
 
 // Ruta para obtener el historial de conexiones de un usuario
-app.get('/api/users/:id/login-history', verifyToken, (req, res) => {
+app.get('/api/users/:id/login-history', verifyToken, async (req, res) => {
   const userId = req.params.id;
   
   // Verificar que el ID sea válido
@@ -399,33 +426,33 @@ app.get('/api/users/:id/login-history', verifyToken, (req, res) => {
   
   // Si no es el propio usuario y no es admin, denegar acceso
   if (parseInt(userId) !== req.user.id && req.user.role !== 'admin') {
-    // En un sistema real, tendrías roles. Aquí lo simplificamos
     return res.status(403).json({ message: 'No tienes permiso para ver este historial' });
   }
   
-  // Consultar historial
-  db.query(
-    `SELECT h.id, h.login_time, h.ip_address, h.user_agent, h.status,
-            u.nombre, u.apellido, u.email
-     FROM login_history h
-     JOIN users u ON h.user_id = u.id
-     WHERE h.user_id = ?
-     ORDER BY h.login_time DESC
-     LIMIT 100`,
-    [userId],
-    (err, results) => {
-      if (err) {
-        console.error('Error al obtener historial de conexiones:', err);
-        return res.status(500).json({ message: 'Error del servidor' });
-      }
-      
-      res.json(results);
-    }
-  );
+  const connection = await pool.getConnection();
+  try {
+    const [loginHistory] = await connection.query(
+      `SELECT h.id, h.login_time, h.ip_address, h.user_agent, h.status,
+              u.nombre, u.apellido, u.email
+       FROM login_history h
+       JOIN users u ON h.user_id = u.id
+       WHERE h.user_id = ?
+       ORDER BY h.login_time DESC
+       LIMIT 100`,
+      [userId]
+    );
+    
+    res.json(loginHistory);
+  } catch (err) {
+    logger.error(`Error al obtener historial de conexiones: ${err.message}`);
+    return res.status(500).json({ message: 'Error del servidor al obtener historial' });
+  } finally {
+    connection.release();
+  }
 });
 
 // Eliminar usuario por ID
-app.delete('/api/users/:id', verifyToken, (req, res) => {
+app.delete('/api/users/:id', verifyToken, async (req, res) => {
   const userId = req.params.id;
   
   // Verificar que el ID sea válido
@@ -433,38 +460,42 @@ app.delete('/api/users/:id', verifyToken, (req, res) => {
     return res.status(400).json({ message: 'ID de usuario inválido' });
   }
   
-  console.log(`Intento de eliminar usuario con ID: ${userId}`);
+  logger.info(`Intento de eliminar usuario con ID: ${userId}`);
   
   // No permitir que un usuario se elimine a sí mismo
   if (parseInt(userId) === req.user.id) {
     return res.status(403).json({ message: 'No puedes eliminar tu propio usuario' });
   }
   
-  // Verificar si el usuario existe antes de eliminarlo
-  db.query('SELECT * FROM users WHERE id = ?', [userId], (err, results) => {
-    if (err) {
-      console.error('Error al buscar usuario:', err);
-      return res.status(500).json({ message: 'Error del servidor' });
-    }
+  const connection = await pool.getConnection();
+  try {
+    // Verificar si el usuario existe
+    const [users] = await connection.query(
+      'SELECT * FROM users WHERE id = ?', 
+      [userId]
+    );
     
-    if (results.length === 0) {
+    if (users.length === 0) {
       return res.status(404).json({ message: 'Usuario no encontrado' });
     }
     
     // Eliminar el usuario
-    db.query('DELETE FROM users WHERE id = ?', [userId], (err, result) => {
-      if (err) {
-        console.error('Error al eliminar usuario:', err);
-        return res.status(500).json({ message: 'Error al eliminar el usuario' });
-      }
-      
-      console.log(`Usuario con ID ${userId} eliminado correctamente`);
-      return res.status(200).json({ 
-        message: 'Usuario eliminado correctamente',
-        userId: userId
-      });
+    await connection.query(
+      'DELETE FROM users WHERE id = ?', 
+      [userId]
+    );
+    
+    logger.info(`Usuario con ID ${userId} eliminado correctamente`);
+    return res.status(200).json({ 
+      message: 'Usuario eliminado correctamente',
+      userId: userId
     });
-  });
+  } catch (err) {
+    logger.error(`Error al eliminar usuario: ${err.message}`);
+    return res.status(500).json({ message: 'Error del servidor al eliminar usuario' });
+  } finally {
+    connection.release();
+  }
 });
 
 // Actualizar datos de un usuario
@@ -482,37 +513,37 @@ app.put('/api/users/:id', verifyToken, async (req, res) => {
     return res.status(400).json({ message: 'Nombre y apellido son obligatorios' });
   }
   
-  console.log(`Intento de actualizar usuario con ID: ${userId}`);
+  logger.info(`Intento de actualizar usuario con ID: ${userId}`);
   
-  // Verificar si el usuario existe
-  db.query('SELECT * FROM users WHERE id = ?', [userId], (err, results) => {
-    if (err) {
-      console.error('Error al buscar usuario:', err);
-      return res.status(500).json({ message: 'Error del servidor' });
-    }
+  const connection = await pool.getConnection();
+  try {
+    // Verificar si el usuario existe
+    const [users] = await connection.query(
+      'SELECT * FROM users WHERE id = ?',
+      [userId]
+    );
     
-    if (results.length === 0) {
+    if (users.length === 0) {
       return res.status(404).json({ message: 'Usuario no encontrado' });
     }
     
     // Actualizar los datos del usuario
-    db.query(
+    await connection.query(
       'UPDATE users SET nombre = ?, apellido = ? WHERE id = ?',
-      [nombre, apellido, userId],
-      (err, result) => {
-        if (err) {
-          console.error('Error al actualizar usuario:', err);
-          return res.status(500).json({ message: 'Error al actualizar el usuario' });
-        }
-        
-        console.log(`Usuario con ID ${userId} actualizado correctamente`);
-        return res.status(200).json({ 
-          message: 'Usuario actualizado correctamente',
-          userId: userId
-        });
-      }
+      [nombre, apellido, userId]
     );
-  });
+    
+    logger.info(`Usuario con ID ${userId} actualizado correctamente`);
+    return res.status(200).json({ 
+      message: 'Usuario actualizado correctamente',
+      userId: userId
+    });
+  } catch (err) {
+    logger.error(`Error al actualizar usuario: ${err.message}`);
+    return res.status(500).json({ message: 'Error del servidor al actualizar usuario' });
+  } finally {
+    connection.release();
+  }
 });
 
 // Cambiar contraseña
@@ -535,20 +566,26 @@ app.put('/api/users/:id/password', verifyToken, async (req, res) => {
     return res.status(400).json({ message: 'Contraseña actual y nueva son obligatorias' });
   }
   
-  console.log(`Intento de cambiar contraseña de usuario con ID: ${userId}`);
+  // Validar contraseña
+  if (newPassword.length < 8) {
+    return res.status(400).json({ message: 'La nueva contraseña debe tener al menos 8 caracteres' });
+  }
   
-  // Verificar si el usuario existe y su contraseña actual
-  db.query('SELECT * FROM users WHERE id = ?', [userId], async (err, results) => {
-    if (err) {
-      console.error('Error al buscar usuario:', err);
-      return res.status(500).json({ message: 'Error del servidor' });
-    }
+  logger.info(`Intento de cambiar contraseña de usuario con ID: ${userId}`);
+  
+  const connection = await pool.getConnection();
+  try {
+    // Verificar si el usuario existe y su contraseña actual
+    const [users] = await connection.query(
+      'SELECT * FROM users WHERE id = ?',
+      [userId]
+    );
     
-    if (results.length === 0) {
+    if (users.length === 0) {
       return res.status(404).json({ message: 'Usuario no encontrado' });
     }
     
-    const user = results[0];
+    const user = users[0];
     
     // Verificar la contraseña actual
     const match = await bcrypt.compare(currentPassword, user.password);
@@ -557,37 +594,31 @@ app.put('/api/users/:id/password', verifyToken, async (req, res) => {
       return res.status(401).json({ message: 'La contraseña actual es incorrecta' });
     }
     
-    try {
-      // Hash de la nueva contraseña
-      const hashedPassword = await bcrypt.hash(newPassword, 10);
-      
-      // Actualizar la contraseña
-      db.query(
-        'UPDATE users SET password = ? WHERE id = ?',
-        [hashedPassword, userId],
-        (err, result) => {
-          if (err) {
-            console.error('Error al actualizar contraseña:', err);
-            return res.status(500).json({ message: 'Error al actualizar la contraseña' });
-          }
-          
-          console.log(`Contraseña del usuario con ID ${userId} actualizada correctamente`);
-          return res.status(200).json({ 
-            message: 'Contraseña actualizada correctamente'
-          });
-        }
-      );
-    } catch (error) {
-      console.error('Error al hashear la nueva contraseña:', error);
-      return res.status(500).json({ message: 'Error interno del servidor' });
-    }
-  });
+    // Hash de la nueva contraseña
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    
+    // Actualizar la contraseña
+    await connection.query(
+      'UPDATE users SET password = ? WHERE id = ?',
+      [hashedPassword, userId]
+    );
+    
+    logger.info(`Contraseña del usuario con ID ${userId} actualizada correctamente`);
+    return res.status(200).json({ 
+      message: 'Contraseña actualizada correctamente'
+    });
+  } catch (err) {
+    logger.error(`Error al actualizar contraseña: ${err.message}`);
+    return res.status(500).json({ message: 'Error del servidor al actualizar contraseña' });
+  } finally {
+    connection.release();
+  }
 });
 
 // ----- RUTAS PARA GPS -----
 
 // Endpoint para recibir datos GPS del ESP32
-app.post('/api/gps', verifyApiKey, (req, res) => {
+app.post('/api/gps', verifyApiKey, async (req, res) => {
   const { 
     device_id, 
     latitude, 
@@ -598,11 +629,12 @@ app.post('/api/gps', verifyApiKey, (req, res) => {
     hdop,
     timestamp,
     date,
-    battery
+    battery,
+    simulated
   } = req.body;
   
   // Validar datos requeridos
-  if (!device_id || !latitude || !longitude) {
+  if (!device_id || latitude === undefined || longitude === undefined) {
     return res.status(400).json({ message: 'Faltan campos obligatorios: device_id, latitude, longitude' });
   }
   
@@ -611,33 +643,35 @@ app.post('/api/gps', verifyApiKey, (req, res) => {
     return res.status(400).json({ message: 'Valores de latitud o longitud fuera de rango' });
   }
   
-  // Insertar datos en la base de datos
-  db.query(
-    `INSERT INTO gps_data 
-     (device_id, latitude, longitude, altitude, speed, satellites, hdop, battery, gps_timestamp, gps_date) 
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [device_id, latitude, longitude, altitude, speed, satellites, hdop, battery, timestamp, date],
-    (err, result) => {
-      if (err) {
-        console.error('Error al guardar datos GPS:', err);
-        return res.status(500).json({ message: 'Error al guardar datos GPS' });
-      }
-      
-      console.log(`Datos GPS recibidos de ${device_id}: Lat=${latitude}, Lon=${longitude}`);
-      return res.status(201).json({ 
-        message: 'Datos GPS guardados correctamente',
-        id: result.insertId
-      });
-    }
-  );
+  const connection = await pool.getConnection();
+  try {
+    // Insertar datos en la base de datos
+    const [result] = await connection.query(
+      `INSERT INTO gps_data 
+       (device_id, latitude, longitude, altitude, speed, satellites, hdop, battery, gps_timestamp, gps_date) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [device_id, latitude, longitude, altitude, speed, satellites, hdop, battery, timestamp, date]
+    );
+    
+    logger.info(`Datos GPS recibidos de ${device_id}: Lat=${latitude}, Lon=${longitude}`);
+    return res.status(201).json({ 
+      message: 'Datos GPS guardados correctamente',
+      id: result.insertId
+    });
+  } catch (err) {
+    logger.error(`Error al guardar datos GPS: ${err.message}`);
+    return res.status(500).json({ message: 'Error del servidor al guardar datos GPS' });
+  } finally {
+    connection.release();
+  }
 });
 
 // Endpoint para obtener datos GPS (protegido con autenticación JWT)
-app.get('/api/gps', verifyToken, (req, res) => {
-  const limit = parseInt(req.query.limit) || 100; // Limitar el número de registros
-  const device = req.query.device || null; // Filtrar por dispositivo
-  const startDate = req.query.start || null; // Fecha de inicio (YYYY-MM-DD)
-  const endDate = req.query.end || null; // Fecha de fin (YYYY-MM-DD)
+app.get('/api/gps', verifyToken, async (req, res) => {
+  const limit = parseInt(req.query.limit) || 100;
+  const device = req.query.device || null;
+  const startDate = req.query.start || null;
+  const endDate = req.query.end || null;
   
   // Construir la consulta SQL con filtros opcionales
   let query = 'SELECT * FROM gps_data';
@@ -682,19 +716,20 @@ app.get('/api/gps', verifyToken, (req, res) => {
   query += ' LIMIT ?';
   queryParams.push(limit);
   
-  // Ejecutar la consulta
-  db.query(query, queryParams, (err, results) => {
-    if (err) {
-      console.error('Error al obtener datos GPS:', err);
-      return res.status(500).json({ message: 'Error al obtener datos GPS' });
-    }
-    
+  const connection = await pool.getConnection();
+  try {
+    const [results] = await connection.query(query, queryParams);
     res.json(results);
-  });
+  } catch (err) {
+    logger.error(`Error al obtener datos GPS: ${err.message}`);
+    return res.status(500).json({ message: 'Error del servidor al obtener datos GPS' });
+  } finally {
+    connection.release();
+  }
 });
 
 // Endpoint para obtener el último registro GPS de cada dispositivo
-app.get('/api/gps/latest', verifyToken, (req, res) => {
+app.get('/api/gps/latest', verifyToken, async (req, res) => {
   const query = `
     SELECT g.*
     FROM gps_data g
@@ -706,18 +741,20 @@ app.get('/api/gps/latest', verifyToken, (req, res) => {
     ORDER BY g.created_at DESC
   `;
   
-  db.query(query, (err, results) => {
-    if (err) {
-      console.error('Error al obtener últimos datos GPS:', err);
-      return res.status(500).json({ message: 'Error del servidor' });
-    }
-    
+  const connection = await pool.getConnection();
+  try {
+    const [results] = await connection.query(query);
     res.json(results);
-  });
+  } catch (err) {
+    logger.error(`Error al obtener últimos datos GPS: ${err.message}`);
+    return res.status(500).json({ message: 'Error del servidor al obtener últimos datos GPS' });
+  } finally {
+    connection.release();
+  }
 });
 
 // Endpoint para obtener la lista de dispositivos GPS disponibles
-app.get('/api/gps/devices', verifyToken, (req, res) => {
+app.get('/api/gps/devices', verifyToken, async (req, res) => {
   const query = `
     SELECT DISTINCT device_id, 
            COUNT(*) as total_records,
@@ -728,42 +765,119 @@ app.get('/api/gps/devices', verifyToken, (req, res) => {
     ORDER BY last_record DESC
   `;
   
-  db.query(query, (err, results) => {
-    if (err) {
-      console.error('Error al obtener dispositivos GPS:', err);
-      return res.status(500).json({ message: 'Error del servidor' });
-    }
-    
+  const connection = await pool.getConnection();
+  try {
+    const [results] = await connection.query(query);
     res.json(results);
+  } catch (err) {
+    logger.error(`Error al obtener dispositivos GPS: ${err.message}`);
+    return res.status(500).json({ message: 'Error del servidor al obtener dispositivos GPS' });
+  } finally {
+    connection.release();
+  }
+});
+
+// Endpoint para verificar salud del servidor
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'up',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
   });
 });
 
-// Configuración HTTPS
-try {
-  const httpsOptions = {
-    key: fs.readFileSync(process.env.SSL_KEY_PATH || '/etc/letsencrypt/live/seguridadenredes.ddns.net/privkey.pem'),
-    cert: fs.readFileSync(process.env.SSL_CERT_PATH || '/etc/letsencrypt/live/seguridadenredes.ddns.net/fullchain.pem')
-  };
-
-  // Crear servidor HTTPS
-  https.createServer(httpsOptions, app).listen(port, () => {
-    console.log(`Servidor HTTPS corriendo en https://localhost:${port}`);
+// Manejador global de errores
+app.use((err, req, res, next) => {
+  logger.error(`Error no manejado: ${err.stack}`);
+  res.status(500).json({
+    message: 'Error interno del servidor',
+    error: process.env.NODE_ENV === 'development' ? err.message : undefined
   });
+});
 
-  // Opcional: Redirigir HTTP a HTTPS
-  if (process.env.REDIRECT_HTTP === 'true') {
-    const httpApp = express();
-    httpApp.all('*', (req, res) => {
-      return res.redirect(`https://${req.hostname}:${port}${req.path}`);
-    });
-    httpApp.listen(80, () => console.log('Servidor HTTP redirigiendo a HTTPS'));
+// Proceso de inicio
+async function startServer() {
+  try {
+    // Inicializar la base de datos
+    await initializeDatabase();
+    
+    // Configuración HTTPS
+    try {
+      const httpsOptions = {
+        key: fs.readFileSync(process.env.SSL_KEY_PATH || '/etc/letsencrypt/live/seguridadenredes.ddns.net/privkey.pem'),
+        cert: fs.readFileSync(process.env.SSL_CERT_PATH || '/etc/letsencrypt/live/seguridadenredes.ddns.net/fullchain.pem')
+      };
+
+      // Crear servidor HTTPS
+      const httpsServer = https.createServer(httpsOptions, app);
+      
+      // Manejar errores del servidor
+      httpsServer.on('error', (err) => {
+        logger.error(`Error en el servidor HTTPS: ${err.message}`);
+      });
+      
+      httpsServer.listen(port, () => {
+        logger.info(`Servidor HTTPS corriendo en puerto ${port}`);
+      });
+
+      // Opcional: Redirigir HTTP a HTTPS
+      if (process.env.REDIRECT_HTTP === 'true') {
+        const httpApp = express();
+        httpApp.all('*', (req, res) => {
+          return res.redirect(`https://${req.hostname}:${port}${req.path}`);
+        });
+        httpApp.listen(80, () => logger.info('Servidor HTTP redirigiendo a HTTPS'));
+      }
+    } catch (error) {
+      logger.error(`Error al iniciar el servidor HTTPS: ${error.message}`);
+      logger.info('Iniciando servidor sin HTTPS como fallback...');
+      
+      // Iniciar el servidor HTTP como fallback
+      const httpServer = app.listen(port, () => {
+        logger.info(`Servidor fallback HTTP corriendo en puerto ${port}`);
+      });
+      
+      // Manejar errores del servidor
+      httpServer.on('error', (err) => {
+        logger.error(`Error en el servidor HTTP: ${err.message}`);
+      });
+    }
+    
+    // Manejar señales de terminación
+    process.on('SIGTERM', gracefulShutdown);
+    process.on('SIGINT', gracefulShutdown);
+  } catch (err) {
+    logger.error(`Error al iniciar servidor: ${err.message}`);
+    process.exit(1);
   }
-} catch (error) {
-  console.error('Error al iniciar el servidor HTTPS:', error);
-  console.log('Iniciando servidor sin HTTPS como fallback...');
-  
-  // Iniciar el servidor HTTP como fallback
-  app.listen(port, () => {
-    console.log(`Servidor fallback HTTP corriendo en http://localhost:${port}`);
-  });
 }
+
+// Función para apagado correcto
+async function gracefulShutdown() {
+  logger.info('Iniciando apagado correcto...');
+  
+  // Cerrar pool de conexiones a la base de datos
+  if (pool) {
+    logger.info('Cerrando conexiones a la base de datos...');
+    await pool.end();
+  }
+  
+  logger.info('Apagado completado, saliendo...');
+  process.exit(0);
+}
+
+// Manejo de excepciones no capturadas
+process.on('uncaughtException', (err) => {
+  logger.error(`Excepción no capturada: ${err.stack}`);
+  // Salir con error
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error(`Rechazo de promesa no manejado: ${reason}`);
+});
+
+// Iniciar el servidor
+startServer();
+
+module.exports = app; // Para pruebas
