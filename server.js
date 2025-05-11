@@ -220,7 +220,7 @@ const verifyToken = (req, res, next) => {
 // Middleware para verificar la clave API (para dispositivos ESP32)
 const verifyApiKey = (req, res, next) => {
   const apiKey = req.headers['x-api-key'];
-  const expectedApiKey = process.env.ESP32_API_KEY || 'clave_secreta_para_autorizar';
+  const expectedApiKey = process.env.ESP32_API_KEY || '1234567890';
   
   if (!apiKey || apiKey !== expectedApiKey) {
     logger.warn(`Intento de acceso con API key inválida: ${apiKey}`);
