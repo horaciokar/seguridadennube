@@ -881,3 +881,237 @@ process.on('unhandledRejection', (reason, promise) => {
 startServer();
 
 module.exports = app; // Para pruebas
+
+// ----- RUTAS PARA SDR -----
+
+// Endpoint para recibir datos del SDR
+app.post('/api/sdr', verifyApiKey, async (req, res) => {
+  const { 
+    device_id, 
+    icao,
+    callsign,
+    altitude,
+    speed,
+    heading,
+    latitude, 
+    longitude,
+    rssi,
+    timestamp
+  } = req.body;
+  
+  // Validar datos requeridos (al menos identificación y posición)
+  if (!device_id || !icao || latitude === undefined || longitude === undefined) {
+    return res.status(400).json({ message: 'Faltan campos obligatorios: device_id, icao, latitude, longitude' });
+  }
+  
+  // Validar rangos de latitud y longitud
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+    return res.status(400).json({ message: 'Valores de latitud o longitud fuera de rango' });
+  }
+  
+  const connection = await pool.getConnection();
+  try {
+    // Verificar si existe la tabla sdr_data, crearla si no existe
+    const [sdrDataTable] = await connection.query(
+      `SELECT table_name 
+       FROM information_schema.tables 
+       WHERE table_schema = ? 
+       AND table_name = 'sdr_data'`,
+      [process.env.DB_NAME]
+    );
+
+    if (sdrDataTable.length === 0) {
+      logger.info('Creando tabla sdr_data');
+      await connection.query(`
+        CREATE TABLE sdr_data (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          device_id VARCHAR(50) NOT NULL,
+          icao VARCHAR(50) NOT NULL,
+          callsign VARCHAR(50),
+          altitude DOUBLE,
+          speed DOUBLE,
+          heading DOUBLE,
+          latitude DOUBLE NOT NULL,
+          longitude DOUBLE NOT NULL,
+          rssi DOUBLE,
+          sdr_timestamp BIGINT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_device_id (device_id),
+          INDEX idx_icao (icao),
+          INDEX idx_created_at (created_at)
+        )
+      `);
+    }
+
+    // Insertar datos en la base de datos
+    const [result] = await connection.query(
+      `INSERT INTO sdr_data 
+       (device_id, icao, callsign, altitude, speed, heading, latitude, longitude, rssi, sdr_timestamp) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [device_id, icao, callsign, altitude, speed, heading, latitude, longitude, rssi, timestamp]
+    );
+    
+    logger.info(`Datos SDR recibidos de ${device_id}: ICAO=${icao}, Callsign=${callsign}, Lat=${latitude}, Lon=${longitude}`);
+    
+    return res.status(201).json({ 
+      message: 'Datos SDR guardados correctamente',
+      id: result.insertId
+    });
+  } catch (err) {
+    logger.error(`Error al guardar datos SDR: ${err.message}`);
+    return res.status(500).json({ message: 'Error del servidor al guardar datos SDR' });
+  } finally {
+    connection.release();
+  }
+});
+
+// Endpoint para obtener datos SDR (protegido con autenticación JWT)
+app.get('/api/sdr', verifyToken, async (req, res) => {
+  const limit = parseInt(req.query.limit) || 100;
+  const device = req.query.device || null;
+  const icao = req.query.icao || null;
+  const callsign = req.query.callsign || null;
+  const startDate = req.query.start || null;
+  const endDate = req.query.end || null;
+  
+  // Construir la consulta SQL con filtros opcionales
+  let query = 'SELECT * FROM sdr_data';
+  const queryParams = [];
+  
+  let whereAdded = false;
+  
+  // Filtro por dispositivo
+  if (device) {
+    query += ' WHERE device_id = ?';
+    queryParams.push(device);
+    whereAdded = true;
+  }
+  
+  // Filtro por icao
+  if (icao) {
+    if (whereAdded) {
+      query += ' AND';
+    } else {
+      query += ' WHERE';
+      whereAdded = true;
+    }
+    query += ' icao = ?';
+    queryParams.push(icao);
+  }
+  
+  // Filtro por callsign (búsqueda parcial)
+  if (callsign) {
+    if (whereAdded) {
+      query += ' AND';
+    } else {
+      query += ' WHERE';
+      whereAdded = true;
+    }
+    query += ' callsign LIKE ?';
+    queryParams.push(`%${callsign}%`);
+  }
+  
+  // Filtro por fecha de inicio
+  if (startDate) {
+    if (whereAdded) {
+      query += ' AND';
+    } else {
+      query += ' WHERE';
+      whereAdded = true;
+    }
+    query += ' DATE(created_at) >= ?';
+    queryParams.push(startDate);
+  }
+  
+  // Filtro por fecha de fin
+  if (endDate) {
+    if (whereAdded) {
+      query += ' AND';
+    } else {
+      query += ' WHERE';
+    }
+    query += ' DATE(created_at) <= ?';
+    queryParams.push(endDate);
+  }
+  
+  // Ordenar por fecha descendente (más reciente primero)
+  query += ' ORDER BY created_at DESC';
+  
+  // Limitar el número de resultados
+  query += ' LIMIT ?';
+  queryParams.push(limit);
+  
+  const connection = await pool.getConnection();
+  try {
+    const [results] = await connection.query(query, queryParams);
+    res.json(results);
+  } catch (err) {
+    logger.error(`Error al obtener datos SDR: ${err.message}`);
+    return res.status(500).json({ message: 'Error del servidor al obtener datos SDR' });
+  } finally {
+    connection.release();
+  }
+});
+
+// Endpoint para obtener los últimos registros SDR de cada avión detectado
+app.get('/api/sdr/latest', verifyToken, async (req, res) => {
+  const query = `
+    SELECT s.*
+    FROM sdr_data s
+    INNER JOIN (
+      SELECT icao, MAX(created_at) as max_date
+      FROM sdr_data
+      GROUP BY icao
+    ) m ON s.icao = m.icao AND s.created_at = m.max_date
+    ORDER BY s.created_at DESC
+  `;
+  
+  const connection = await pool.getConnection();
+  try {
+    const [results] = await connection.query(query);
+    res.json(results);
+  } catch (err) {
+    logger.error(`Error al obtener últimos datos SDR: ${err.message}`);
+    return res.status(500).json({ message: 'Error del servidor al obtener últimos datos SDR' });
+  } finally {
+    connection.release();
+  }
+});
+
+// Endpoint para obtener estadísticas de los dispositivos SDR
+app.get('/api/sdr/stats', verifyToken, async (req, res) => {
+  const deviceQuery = `
+    SELECT 
+      device_id,
+      COUNT(DISTINCT icao) as unique_aircraft,
+      COUNT(*) as total_records,
+      MIN(created_at) as first_record,
+      MAX(created_at) as last_record
+    FROM sdr_data
+    GROUP BY device_id
+    ORDER BY last_record DESC
+  `;
+  
+  const aircraftQuery = `
+    SELECT 
+      COUNT(DISTINCT icao) as total_aircraft,
+      COUNT(DISTINCT callsign) as total_callsigns
+    FROM sdr_data
+  `;
+  
+  const connection = await pool.getConnection();
+  try {
+    const [devices] = await connection.query(deviceQuery);
+    const [aircraft] = await connection.query(aircraftQuery);
+    
+    res.json({
+      devices: devices,
+      stats: aircraft[0]
+    });
+  } catch (err) {
+    logger.error(`Error al obtener estadísticas SDR: ${err.message}`);
+    return res.status(500).json({ message: 'Error del servidor al obtener estadísticas SDR' });
+  } finally {
+    connection.release();
+  }
+});

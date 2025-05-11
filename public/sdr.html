@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel SDR - Sistema de Seguimiento</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/sdr.css">
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+</head>
+<body class="sdr-page">
+    <div class="sdr-container">
+        <div class="sdr-header">
+            <h1 class="sdr-title">Panel de Control SDR</h1>
+            <div class="sdr-header-actions">
+                <button id="sdr-settings-btn" class="btn btn-secondary">
+                    <i class="fas fa-cog"></i> Configurar SDR
+                </button>
+                <button id="back-btn" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left"></i> Volver
+                </button>
+                <button id="logout-btn" class="btn btn-danger">
+                    <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
+                </button>
+            </div>
+        </div>
+        
+        <div id="sdr-message" class="message"></div>
+        
+        <div class="sdr-content">
+            <div class="sdr-sidebar">
+                <div class="sdr-controls">
+                    <h3 class="sdr-controls-title">Controles</h3>
+                    
+                    <div class="control-group">
+                        <label class="control-label" for="device-select">Dispositivo:</label>
+                        <select id="device-select">
+                            <option value="all">Todos los dispositivos</option>
+                            <!-- Se cargarán dinámicamente -->
+                        </select>
+                    </div>
+                    
+                    <div class="control-group">
+                        <label class="control-label" for="interval-select">Intervalo de actualización:</label>
+                        <select id="interval-select">
+                            <option value="5000">Cada 5 segundos</option>
+                            <option value="10000" selected>Cada 10 segundos</option>
+                            <option value="30000">Cada 30 segundos</option>
+                            <option value="60000">Cada minuto</option>
+                            <option value="300000">Cada 5 minutos</option>
+                        </select>
+                    </div>
+                    
+                    <div class="control-group">
+                        <div class="control-field">
+                            <button id="refresh-btn" class="btn btn-primary btn-block">
+                                <i class="fas fa-sync-alt"></i> Actualizar Ahora
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="control-group">
+                        <div class="control-field">
+                            <button id="track-btn" class="btn btn-secondary btn-block">
+                                <i class="fas fa-location-arrow"></i> Iniciar Seguimiento
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="device-stats-panel">
+                    <h3 class="device-stats-title">Estadísticas</h3>
+                    <div id="device-stats">
+                        <!-- Se cargará dinámicamente -->
+                        <div class="stat-item">
+                            <div class="stat-value">0</div>
+                            <div class="stat-label">Dispositivos</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">0</div>
+                            <div class="stat-label">Activos</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">0</div>
+                            <div class="stat-label">Inactivos</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="device-list" id="device-list">
+                    <!-- Se cargará dinámicamente -->
+                    <div class="no-devices">Cargando dispositivos...</div>
+                </div>
+            </div>
+            
+            <div class="sdr-map-container">
+                <div id="map"></div>
+                <div id="map-message" class="message"></div>
+                
+                <div class="data-table-container">
+                    <table id="gps-data-table" class="hidden">
+                        <thead>
+                            <tr>
+                                <th>Dispositivo</th>
+                                <th>Fecha/Hora</th>
+                                <th>Latitud</th>
+                                <th>Longitud</th>
+                                <th>Altitud</th>
+                                <th>Velocidad</th>
+                                <th>Satélites</th>
+                                <th>Batería</th>
+                                <th>Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="gps-data-body">
+                            <!-- Se cargará dinámicamente -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal de historial -->
+    <div id="history-modal" class="modal hidden">
+        <div class="modal-content modal-lg">
+            <span class="close-modal">&times;</span>
+            <div class="modal-header">
+                <h2 id="history-title">Historial de Dispositivo</h2>
+            </div>
+            <div id="history-body" class="modal-body">
+                <!-- Se cargará dinámicamente -->
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal de configuración SDR -->
+    <div id="sdr-settings-modal" class="modal hidden">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <div class="modal-header">
+                <h2>Configuración del SDR</h2>
+            </div>
+            <div class="modal-body">
+                <form id="sdr-settings-form">
+                    <div class="form-group">
+                        <label for="sdr-server-url">URL del Servidor:</label>
+                        <input type="text" id="sdr-server-url" placeholder="https://tu-servidor.com" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="sdr-server-port">Puerto:</label>
+                        <input type="text" id="sdr-server-port" placeholder="3000">
+                    </div>
+                    <div class="form-group">
+                        <label for="sdr-api-key">Clave API:</label>
+                        <input type="text" id="sdr-api-key" placeholder="Clave secreta de autenticación">
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Guardar Configuración</button>
+                    <div id="sdr-settings-message" class="message"></div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <!-- Script personalizado -->
+    <script src="js/sdr.js"></script>
+</body>
+</html>
