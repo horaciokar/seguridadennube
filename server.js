@@ -205,7 +205,7 @@ async function checkAndCreateDatabaseStructure() {
     // Verificar si existe el usuario admin
     const [adminUser] = await connection.query(
       'SELECT * FROM users WHERE email = ?',
-      ['admin@example.com']
+      ['horaciokar@gmail.com']
     );
 
     if (adminUser.length === 0) {
@@ -213,7 +213,7 @@ async function checkAndCreateDatabaseStructure() {
       const hashedPassword = await bcrypt.hash('1234567890', 10);
       await connection.query(
         'INSERT INTO users (nombre, apellido, email, password, role) VALUES (?, ?, ?, ?, ?)',
-        ['Admin', 'System', 'admin@example.com', hashedPassword, 'admin']
+        ['Admin', 'System', 'horaciokar@gmail.com', hashedPassword, 'admin']
       );
     }
 
