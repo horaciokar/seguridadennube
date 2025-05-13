@@ -1,0 +1,89 @@
+/* Estilos específicos para la página de perfiles */
+
+/* Indicadores de roles */
+.role-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+.role-badge.admin {
+    background-color: #f44336; /* Rojo */
+    color: white;
+}
+
+.role-badge.viewer {
+    background-color: #75aadb; /* Celeste */
+    color: white;
+}
+
+/* Botón para cambiar rol */
+.btn-edit-role {
+    background-color: #ff9800; /* Naranja */
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.3s;
+}
+
+.btn-edit-role:hover {
+    background-color: #f57c00; /* Naranja más oscuro */
+}
+
+/* Texto de información del usuario */
+.user-info-text {
+    background-color: #f0f4f8;
+    padding: 10px;
+    border-radius: 4px;
+    font-weight: bold;
+}
+
+/* Estilo para roles seleccionados en el select */
+#role-select {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 16px;
+    background-color: #fff;
+}
+
+#role-select option {
+    padding: 10px;
+}
+
+/* Contenedor de los usuarios */
+#profiles-content {
+    margin-top: 20px;
+}
+
+/* Estilos para la tabla de perfiles */
+#profiles-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+#profiles-table th, #profiles-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+}
+
+#profiles-table th {
+    background-color: #75aadb; /* Celeste */
+    color: white;
+}
+
+#profiles-table tr:nth-child(even) {
+    background-color: #f0f8ff; /* Celeste muy claro */
+}
+
+#profiles-table tr:hover {
+    background-color: #e1f5fe; /* Celeste más claro para hover */
+}

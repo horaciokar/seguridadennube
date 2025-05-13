@@ -692,16 +692,39 @@ function showDashboard() {
         // Asegurarse de que el botón tenga un href correcto
         gpsButton.href = 'gps.html';
     }
-}
-
-// Función para cargar la lista de usuarios desde la API
-async function loadUsers() {
+    
+    // Añadir enlace a gestión de perfiles si el usuario es admin
+    if (user.role === 'admin') {
+        const profilesButton = document.getElementById('profiles-btn');
+        const dashboardHeader = document.querySelector('.header-buttons');
+        
+        if (!profilesButton && dashboardHeader) {
+            const newProfilesButton = document.createElement('a');
+            newProfilesButton.id = 'profiles-btn';
+            newProfilesButton.className = 'btn btn-secondary';
+            newProfilesButton.textContent = 'Gestión de Perfiles';
+            newProfilesButton.href = 'profiles.html';
+            newProfilesButton.style.marginRight = '10px';
+            
+            // Insertar al inicio de los botones
+            dashboardHeader.insertBefore(newProfilesButton, dashboardHeader.firstChild);
+            
+            console.log('Botón Perfiles creado y añadido al DOM');
+        }
+    }
+ }
+ 
+ // Función para cargar la lista de usuarios desde la API
+ async function loadUsers() {
     try {
         const token = localStorage.getItem('token');
+        const user = JSON.parse(localStorage.getItem('user'));
         
         if (!token) {
             throw new Error('No hay token disponible');
         }
+        
+        const isAdmin = user.role === 'admin';
         
         // Mostrar mensaje de carga
         if (dashboardMessage) {
@@ -768,16 +791,28 @@ async function loadUsers() {
                         <td class="action-column">
                             ${currentUser.id === user.id ? 
                                 '<span class="current-user-badge">Tú</span>' : 
-                                `<button class="btn-edit" data-id="${user.id}">Editar</button>
-                                 <button class="btn-history" data-id="${user.id}" data-name="${user.nombre} ${user.apellido}" data-email="${user.email}">Historial</button>
-                                 <button class="btn-delete" data-id="${user.id}">Eliminar</button>`}
+                                `<button class="btn-history" data-id="${user.id}" data-name="${user.nombre} ${user.apellido}" data-email="${user.email}">Historial</button>
+                                 ${isAdmin ? `<button class="btn-edit" data-id="${user.id}">Editar</button>
+                                 <button class="btn-delete" data-id="${user.id}">Eliminar</button>` : ''}`}
                         </td>
                     `;
                     
                     usersList.appendChild(row);
                     
-                    // Añadir event listeners a los botones si no es el usuario actual
-                    if (currentUser.id !== user.id) {
+                    // Añadir event listeners a los botones
+                    // Botón de historial siempre visible
+                    const historyButton = row.querySelector('.btn-history');
+                    if (historyButton) {
+                        historyButton.addEventListener('click', function() {
+                            const userId = this.getAttribute('data-id');
+                            const userName = this.getAttribute('data-name');
+                            const userEmail = this.getAttribute('data-email');
+                            showLoginHistory(userId, userName, userEmail);
+                        });
+                    }
+                    
+                    // Botones de editar y eliminar solo para admin
+                    if (isAdmin && currentUser.id !== user.id) {
                         // Botón eliminar
                         const deleteButton = row.querySelector('.btn-delete');
                         if (deleteButton) {
@@ -799,17 +834,6 @@ async function loadUsers() {
                                 }
                             });
                         }
-                        
-                        // Botón historial
-                        const historyButton = row.querySelector('.btn-history');
-                        if (historyButton) {
-                            historyButton.addEventListener('click', function() {
-                                const userId = this.getAttribute('data-id');
-                                const userName = this.getAttribute('data-name');
-                                const userEmail = this.getAttribute('data-email');
-                                showLoginHistory(userId, userName, userEmail);
-                            });
-                        }
                     }
                 });
             }
@@ -825,10 +849,10 @@ async function loadUsers() {
             showMessage(dashboardMessage, `Error: ${error.message}`, true);
         }
     }
-}
-
-// Event listener para el formulario de cambio de contraseña
-if (changePasswordForm) {
+ }
+ 
+ // Event listener para el formulario de cambio de contraseña
+ if (changePasswordForm) {
     changePasswordForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         
@@ -884,10 +908,10 @@ if (changePasswordForm) {
             newPassword
         });
     });
-}
-
-// Event listener para el formulario de edición de usuario
-if (editUserForm) {
+ }
+ 
+ // Event listener para el formulario de edición de usuario
+ if (editUserForm) {
     editUserForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         
@@ -920,10 +944,10 @@ if (editUserForm) {
             apellido
         });
     });
-}
-
-// Función para cerrar sesión
-function logout() {
+ }
+ 
+ // Función para cerrar sesión
+ function logout() {
     // Limpiar localStorage
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -943,15 +967,15 @@ function logout() {
     
     // Resetear pestañas
     if (loginTab) loginTab.click();
-}
-
-// Event listener para cerrar sesión
-if (logoutBtn) {
+ }
+ 
+ // Event listener para cerrar sesión
+ if (logoutBtn) {
     logoutBtn.addEventListener('click', logout);
-}
-
-// Event listener para abrir modal de cambio de contraseña
-if (changePasswordBtn) {
+ }
+ 
+ // Event listener para abrir modal de cambio de contraseña
+ if (changePasswordBtn) {
     changePasswordBtn.addEventListener('click', () => {
         if (passwordModal && passwordModalMessage) {
             passwordModal.classList.remove('hidden');
@@ -959,10 +983,10 @@ if (changePasswordBtn) {
             if (changePasswordForm) changePasswordForm.reset();
         }
     });
-}
-
-// Event listeners para cerrar modales
-if (closeModalBtns) {
+ }
+ 
+ // Event listeners para cerrar modales
+ if (closeModalBtns) {
     closeModalBtns.forEach(btn => {
         btn.addEventListener('click', () => {
             if (passwordModal) passwordModal.classList.add('hidden');
@@ -970,10 +994,10 @@ if (closeModalBtns) {
             if (loginHistoryModal) loginHistoryModal.classList.add('hidden');
         });
     });
-}
-
-// Cerrar modal al hacer clic fuera del contenido
-window.addEventListener('click', (e) => {
+ }
+ 
+ // Cerrar modal al hacer clic fuera del contenido
+ window.addEventListener('click', (e) => {
     if (passwordModal && e.target === passwordModal) {
         passwordModal.classList.add('hidden');
     }
@@ -983,10 +1007,10 @@ window.addEventListener('click', (e) => {
     if (loginHistoryModal && e.target === loginHistoryModal) {
         loginHistoryModal.classList.add('hidden');
     }
-});
-
-// Agregar delegación de eventos para el botón de GPS
-document.addEventListener('click', function(event) {
+ });
+ 
+ // Agregar delegación de eventos para el botón de GPS
+ document.addEventListener('click', function(event) {
     // Verificar si el clic fue en el botón GPS o alguno de sus elementos internos
     let target = event.target;
     while (target != null) {
@@ -997,10 +1021,10 @@ document.addEventListener('click', function(event) {
         }
         target = target.parentElement;
     }
-});
-
-// Verificar si el usuario ya tiene sesión iniciada al cargar la página
-document.addEventListener('DOMContentLoaded', () => {
+ });
+ 
+ // Verificar si el usuario ya tiene sesión iniciada al cargar la página
+ document.addEventListener('DOMContentLoaded', () => {
     // Asegurar que los modales estén ocultos al inicio
     if (editUserModal) editUserModal.classList.add('hidden');
     if (passwordModal) passwordModal.classList.add('hidden');
@@ -1025,10 +1049,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 logout();
             });
     }
-});
-
-// Función para verificar si el token es válido
-async function verifyToken(token) {
+ });
+ 
+ // Función para verificar si el token es válido
+ async function verifyToken(token) {
     try {
         const response = await fetch(`${API_URL}/verify-token`, {
             method: 'GET',
@@ -1042,4 +1066,4 @@ async function verifyToken(token) {
         console.error('Error al verificar token:', error);
         return false;
     }
-}
+ }
