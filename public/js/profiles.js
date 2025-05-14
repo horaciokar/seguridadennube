@@ -82,8 +82,7 @@ async function loadUsers() {
         });
         
         if (!response.ok) {
-            const errorData = await response.json().catch(e => ({ message: `Error al procesar respuesta: ${e.message}` }));
-            console.error('Error de API en loadUsers:', errorData);
+            const errorData = await response.json();
             throw new Error(errorData.message || `Error al cargar usuarios: ${response.status}`);
         }
         
@@ -146,7 +145,7 @@ async function loadUsers() {
         showMessage(profilesMessage, 'Usuarios cargados correctamente', false);
         
     } catch (error) {
-        console.error('Error detallado en loadUsers:', error);
+        console.error('Error al cargar usuarios:', error);
         showMessage(profilesMessage, `Error: ${error.message}`, true);
     }
 }
@@ -172,8 +171,7 @@ async function changeUserRole(userId, newRole) {
         });
         
         if (!response.ok) {
-            const errorData = await response.json().catch(e => ({ message: `Error al procesar respuesta: ${e.message}` }));
-            console.error('Error de API en changeUserRole:', errorData);
+            const errorData = await response.json();
             throw new Error(errorData.message || `Error al actualizar rol: ${response.status}`);
         }
         
@@ -187,7 +185,7 @@ async function changeUserRole(userId, newRole) {
         }, 2000);
         
     } catch (error) {
-        console.error('Error detallado en changeUserRole:', error);
+        console.error('Error al cambiar rol:', error);
         showMessage(roleModalMessage, `Error: ${error.message}`, true);
     }
 }
@@ -203,8 +201,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     try {
-        console.log('Token usado en la verificación:', token);
-        
         // Verificar el rol del usuario
         const response = await fetch(`${API_URL}/users/me`, {
             method: 'GET',
@@ -215,22 +211,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
         
         if (!response.ok) {
-            const errorData = await response.json().catch(e => ({ message: `Error al procesar respuesta: ${e.message}` }));
-            console.error('Error de API en verificación de rol:', errorData);
-            console.error('Estado de la respuesta:', response.status);
-            console.error('Headers de respuesta:', Object.fromEntries([...response.headers]));
-            
-            showMessage(profilesMessage, `Error: ${errorData.message || 'No se pudo verificar el rol del usuario'}`, true);
-            
-            // No redirigir inmediatamente para ver el mensaje
-            setTimeout(() => {
-                window.location.href = 'index.html';
-            }, 5000); // Esperar 5 segundos para poder ver el mensaje de error
-            return;
+            throw new Error('No se pudo verificar el rol del usuario');
         }
         
         const userData = await response.json();
-        console.log('Datos del usuario:', userData);
         
         // Si no es administrador, redirigir al dashboard
         if (userData.role !== 'admin') {
@@ -249,13 +233,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         loadUsers();
         
     } catch (error) {
-        console.error('Error detallado en verificación de rol:', error);
-        showMessage(profilesMessage, `Error: ${error.message}`, true);
-        
-        // No redirigir inmediatamente para ver el mensaje
-        setTimeout(() => {
-            window.location.href = 'index.html';
-        }, 5000);
+        console.error('Error:', error);
+        window.location.href = 'index.html';
     }
 });
 
