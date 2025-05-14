@@ -327,15 +327,35 @@ async function showLoginHistory(userId, userName, userEmail) {
     }
 }
 
-// Función para cargar mi historial de conexiones
+// Función para cargar mi historial de conexiones (versión mejorada)
 async function loadMyLoginHistory() {
     try {
-        const token = localStorage.getItem('token');
-        const user = JSON.parse(localStorage.getItem('user'));
+        console.log('Iniciando carga de mi historial de conexiones');
         
-        if (!token || !user || !myLoginList) {
+        const token = localStorage.getItem('token');
+        const userStr = localStorage.getItem('user');
+        
+        if (!token || !userStr || !myLoginList) {
+            console.error('Falta información necesaria', {
+                token: !!token,
+                user: !!userStr,
+                myLoginList: !!myLoginList
+            });
             throw new Error('No hay información de sesión disponible');
         }
+        
+        // Mostrar mensaje de carga
+        myLoginList.innerHTML = '<tr><td colspan="4" style="text-align:center;">Cargando historial...</td></tr>';
+        
+        let user;
+        try {
+            user = JSON.parse(userStr);
+        } catch (e) {
+            console.error('Error al parsear datos del usuario:', e);
+            throw new Error('Error al procesar datos del usuario');
+        }
+        
+        console.log(`Solicitando historial para usuario ID ${user.id}`);
         
         // Cargar historial
         const response = await fetch(`${API_URL}/users/${user.id}/login-history`, {
@@ -347,10 +367,23 @@ async function loadMyLoginHistory() {
         });
         
         if (!response.ok) {
-            throw new Error(`Error al cargar historial: ${response.status}`);
+            console.error('Error en respuesta:', response.status, response.statusText);
+            
+            // Intentar obtener detalles del error
+            let errorDetails = '';
+            try {
+                const errorData = await response.json();
+                errorDetails = errorData.message || '';
+            } catch (e) {
+                // Si no es JSON, intentar obtener texto
+                errorDetails = await response.text().catch(() => '');
+            }
+            
+            throw new Error(`Error al cargar historial (${response.status}): ${errorDetails || response.statusText}`);
         }
         
         const data = await response.json();
+        console.log(`Recibidos ${data.length} registros de historial`);
         
         // Limpiar lista actual
         myLoginList.innerHTML = '';
@@ -393,8 +426,10 @@ async function loadMyLoginHistory() {
             });
         }
         
+        console.log('Historial de conexiones cargado correctamente');
+        
     } catch (error) {
-        console.error('Error:', error);
+        console.error('Error al cargar historial de conexiones:', error);
         if (myLoginList) {
             myLoginList.innerHTML = `<tr><td colspan="4" style="text-align:center;color:red;">Error: ${error.message}</td></tr>`;
         }
