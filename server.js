@@ -28,6 +28,7 @@ const logger = winston.createLogger({
 
 const app = express();
 const port = process.env.PORT || 3000;
+app.set('trust proxy', true);
 
 // Middleware
 app.use(cors({
@@ -40,9 +41,16 @@ app.use(express.static('public'));
 // Middleware de registro de solicitudes
 app.use((req, res, next) => {
   const start = Date.now();
+  const ip = req.ip || req.connection.remoteAddress;
+  
+  // Registrar IP y headers relevantes para debug
+  console.log(`Solicitud desde IP: ${ip}`);
+  console.log('X-Forwarded-For:', req.headers['x-forwarded-for']);
+  console.log('X-Real-IP:', req.headers['x-real-ip']);
+  
   res.on('finish', () => {
     const duration = Date.now() - start;
-    logger.info(`${req.method} ${req.originalUrl} ${res.statusCode} - ${duration}ms`);
+    logger.info(`${req.method} ${req.originalUrl} ${res.statusCode} - ${duration}ms - IP: ${ip}`);
   });
   next();
 });
@@ -293,15 +301,34 @@ const verifyApiKey = (req, res, next) => {
 
 // Función para obtener IP real del cliente
 const getClientIp = (req) => {
-  const xForwardedFor = req.headers['x-forwarded-for'];
-  if (xForwardedFor) {
-    return xForwardedFor.split(',')[0].trim();
+  // Si trust proxy está habilitado, usamos req.ip directamente
+  if (req.ip && req.ip !== '::1' && !req.ip.includes('127.0.0.1')) {
+      return req.ip;
   }
   
-  return req.headers['x-real-ip'] || 
-         req.connection.remoteAddress || 
-         req.socket.remoteAddress || 
-         (req.connection.socket ? req.connection.socket.remoteAddress : null);
+  // Si no, intentamos con los headers de proxy
+  const xForwardedFor = req.headers['x-forwarded-for'];
+  if (xForwardedFor) {
+      const ips = xForwardedFor.split(',').map(ip => ip.trim());
+      return ips[0]; // El primer IP es el del cliente original
+  }
+  
+  // Intentar con X-Real-IP
+  if (req.headers['x-real-ip']) {
+      return req.headers['x-real-ip'];
+  }
+  
+  // Obtener la dirección remota directamente
+  let ip = req.connection?.remoteAddress || 
+           req.socket?.remoteAddress || 
+           req.connection?.socket?.remoteAddress;
+  
+  // Limpiar formato IPv6 mapeado
+  if (ip && ip.startsWith('::ffff:')) {
+      ip = ip.substring(7);
+  }
+  
+  return ip || 'unknown';
 };
 
 // Ruta para verificar si un token es válido
