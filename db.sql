@@ -1,7 +1,7 @@
-CREATE DATABASE IF NOT EXISTS seguridadenredes;
+CREATE DATABASE IF NOT EXISTS seguridadennube;
 
 -- Usar la base de datos
-USE seguridadenredes;
+USE seguridadennube;
 
 -- Crear la tabla de usuarios
 CREATE TABLE IF NOT EXISTS users (
